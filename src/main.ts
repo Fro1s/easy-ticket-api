@@ -26,6 +26,13 @@ async function bootstrap() {
     jsonDocumentUrl: 'docs/json',
   });
 
-  await app.listen(process.env.PORT || 3001);
+  const port = Number(process.env.PORT) || 3001;
+  await app.listen(port, '0.0.0.0');
+  // eslint-disable-next-line no-console
+  console.log(`[bootstrap] listening on 0.0.0.0:${port}`);
 }
-bootstrap();
+bootstrap().catch((err) => {
+  // eslint-disable-next-line no-console
+  console.error('[bootstrap] failed to start:', err);
+  process.exit(1);
+});
