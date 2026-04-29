@@ -74,7 +74,7 @@ export class UpdateEventDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @Length(1, 140)
+  @Length(1, 255)
   pixKey?: string;
 
   @ApiPropertyOptional({ enum: PixKeyType })

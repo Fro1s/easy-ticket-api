@@ -100,7 +100,7 @@ export class CreateEventDto {
   @ApiPropertyOptional()
   @ValidateIf((o: CreateEventDto) => o.paymentProvider === PaymentProvider.MANUAL_PIX)
   @IsString()
-  @Length(1, 140)
+  @Length(1, 255)
   pixKey?: string;
 
   @ApiPropertyOptional({ enum: PixKeyType })

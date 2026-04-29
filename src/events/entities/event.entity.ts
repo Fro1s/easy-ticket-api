@@ -80,7 +80,7 @@ export class Event {
   })
   paymentProvider: PaymentProvider;
 
-  @Column('varchar', { length: 140, nullable: true })
+  @Column('varchar', { length: 255, nullable: true })
   pixKey: string | null;
 
   @Column({ type: 'enum', enum: PixKeyType, nullable: true })
