@@ -13,7 +13,7 @@ interface ProducerUserSeed {
 }
 
 const PRODUCER_NAME = 'Projeto Criança Feliz';
-const PASSWORD = 'pcf2026';
+const PASSWORD = process.env.PRODUCER_PASSWORD ?? 'pcf2026!';
 const USERS: ProducerUserSeed[] = [
   { email: 'leticia.silveira@projetocriancafeliz.org', name: 'Letícia Silveira' },
   { email: 'matheus.frois@projetocriancafeliz.org', name: 'Matheus Frois' },
