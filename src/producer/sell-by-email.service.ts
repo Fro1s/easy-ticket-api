@@ -256,6 +256,21 @@ export class SellByEmailService {
           `sell-by-email: ticket email failed for ${txResult.buyerEmail}: ${(err as Error).message}`,
         );
       }
+    } else if (claimUrl) {
+      // Order is PENDING (no tickets emitted yet) but the buyer is a ghost user
+      // who needs to activate their account. Send the magic-link email so they
+      // can claim the account and watch the order status.
+      try {
+        await this.emails.sendMagicLink({
+          to: txResult.buyerEmail,
+          url: claimUrl,
+        });
+        emailSent = true;
+      } catch (err) {
+        this.logger.warn(
+          `sell-by-email: claim email failed for ${txResult.buyerEmail}: ${(err as Error).message}`,
+        );
+      }
     }
 
     let pixCopyPaste: string | null = null;
@@ -267,6 +282,7 @@ export class SellByEmailService {
       try {
         pixCopyPaste = buildPixBrCode({
           key: event.pixKey,
+          keyType: event.pixKeyType,
           holderName: event.pixHolderName ?? 'EASY TICKET',
           city: event.venue?.city ?? 'SAO PAULO',
           amountCents: txResult.totalCents,

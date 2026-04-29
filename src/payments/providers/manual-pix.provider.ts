@@ -30,6 +30,7 @@ export class ManualPixProvider implements PaymentsProvider {
 
     const copyPaste = buildPixBrCode({
       key: event.pixKey,
+      keyType: event.pixKeyType,
       holderName: event.pixHolderName ?? 'EASY TICKET',
       city: event.venueCity ?? 'SAO PAULO',
       amountCents: input.totalCents,
