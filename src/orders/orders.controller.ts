@@ -60,7 +60,7 @@ export class OrdersController {
   @Post(':id/checkout')
   @ApiOperation({
     summary:
-      'Choose a payment method and create the payment session (Pix QR / boleto / card token)',
+      'Choose a payment method and create the payment session (Pix QR / card token)',
   })
   @ApiResponse({ status: 200, type: OrderResponse })
   checkout(

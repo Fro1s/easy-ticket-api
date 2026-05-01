@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, LessThan } from 'typeorm';
@@ -28,6 +29,7 @@ import { TicketStatus } from '../common/enums/ticket-status.enum';
 import { EventStatus } from '../common/enums/event-status.enum';
 import { PaymentsProviderRegistry } from '../payments/payments-provider.registry';
 import type { PaymentChargeInfo } from '../payments/payments.types';
+import { calculateProcessingFeeCents } from '../payments/lib/calculate-processing-fee';
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
 import { OrdersStreamService } from './orders-stream.service';
@@ -48,6 +50,7 @@ export class OrdersService {
     private readonly users: UsersService,
     private readonly emails: EmailService,
     private readonly stream: OrdersStreamService,
+    private readonly config: ConfigService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE, { name: 'orders:expire-stale' })
@@ -205,6 +208,21 @@ export class OrdersService {
     const event = order.items[0]!.sector!.event!;
     const provider = this.paymentsRegistry.resolve(event.paymentProvider);
 
+    const feeCfg = {
+      pixFixedCents: Math.round(Number(this.config.get('ABACATEPAY_FEE_PIX_FIXED_BRL') ?? 0.80) * 100),
+      cardPercent: Number(this.config.get('ABACATEPAY_FEE_CARD_PERCENT') ?? 3.5),
+      cardFixedCents: Math.round(Number(this.config.get('ABACATEPAY_FEE_CARD_FIXED_BRL') ?? 0.60) * 100),
+    };
+    const processingFeeCents = calculateProcessingFeeCents({
+      provider: event.paymentProvider,
+      method: dto.method,
+      subtotalCents: order.subtotalCents,
+      config: feeCfg,
+    });
+    order.processingFeeCents = processingFeeCents;
+    order.processingFeeMethod = processingFeeCents > 0 ? dto.method : null;
+    order.totalCents = order.subtotalCents + order.feeCents + processingFeeCents;
+
     const charge = await provider.createCharge({
       orderId: order.id,
       totalCents: order.totalCents,
@@ -226,6 +244,30 @@ export class OrdersService {
     order.paymentMethod = dto.method;
     order.paymentId = charge.paymentId;
     await this.dataSource.getRepository(Order).save(order);
+
+    if (charge.status === 'PAID') {
+      await this.dataSource.transaction(async (mgr) => {
+        const fresh = await mgr.getRepository(Order).findOne({
+          where: { id: order.id },
+          relations: { items: { sector: { event: { venue: true } } } },
+        });
+        if (fresh) {
+          await this.markOrderPaid(mgr, fresh, {
+            allowMissingPaymentMethod: false,
+            sendEmail: true,
+          });
+        }
+      });
+      // Reload to get updated status for the response.
+      const reloaded = await this.dataSource.getRepository(Order).findOne({
+        where: { id: order.id },
+        relations: { items: { sector: { event: { venue: true } } } },
+      });
+      if (reloaded) {
+        const finalSectors = reloaded.items.map((it) => it.sector!).filter(Boolean);
+        return this.serialize(reloaded, event, finalSectors);
+      }
+    }
 
     const sectors = order.items.map((it) => it.sector!).filter(Boolean);
     return this.serialize(order, event, sectors);
@@ -249,6 +291,30 @@ export class OrdersService {
       if (order.userId !== userId) throw new ForbiddenException();
       return this.markOrderPaid(mgr, order, {
         allowMissingPaymentMethod: false,
+        sendEmail: true,
+      });
+    });
+  }
+
+  /**
+   * Called by the AbacatePay webhook on `billing.paid`. Looks up the Order by
+   * paymentId (the charge id returned at checkout time) and marks it PAID.
+   * Idempotent: a second call for the same paymentId is a no-op.
+   */
+  async markPaidByPaymentId(paymentId: string): Promise<void> {
+    await this.dataSource.transaction(async (mgr) => {
+      const order = await mgr.getRepository(Order).findOne({
+        where: { paymentId },
+        relations: { items: { sector: { event: { venue: true } } } },
+      });
+      if (!order) {
+        this.logger.warn(`webhook: no order found for paymentId=${paymentId}`);
+        return;
+      }
+      if (order.status === OrderStatus.PAID) return; // idempotent
+      if (!order.paymentMethod) order.paymentMethod = PaymentMethod.PIX;
+      await this.markOrderPaid(mgr, order, {
+        allowMissingPaymentMethod: true,
         sendEmail: true,
       });
     });
@@ -455,6 +521,7 @@ export class OrdersService {
         expiresAt:
           cached?.expiresAt ?? new Date(Date.now() + 60_000).toISOString(),
         pixDiscountCents,
+        redirectUrl: cached?.redirectUrl ?? null,
       };
     }
 
@@ -483,6 +550,8 @@ export class OrdersService {
       },
       items,
       payment,
+      processingFeeCents: order.processingFeeCents,
+      processingFeeMethod: order.processingFeeMethod,
       competitorTotalCents,
       savingsCents,
     };

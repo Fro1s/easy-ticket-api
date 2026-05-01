@@ -35,6 +35,12 @@ export class Order {
   @Column('int')
   feeCents: number;
 
+  @Column({ type: 'int', default: 0 })
+  processingFeeCents!: number;
+
+  @Column({ type: 'enum', enum: PaymentMethod, nullable: true })
+  processingFeeMethod!: PaymentMethod | null;
+
   @Column('int', { default: 0 })
   discountCents: number;
 

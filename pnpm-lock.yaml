@@ -38,6 +38,9 @@ importers:
       '@paralleldrive/cuid2':
         specifier: ^3.3.0
         version: 3.3.0
+      abacatepay-nodejs-sdk:
+        specifier: ^1.6.0
+        version: 1.6.0
       argon2:
         specifier: ^0.44.0
         version: 0.44.0
@@ -1228,6 +1231,9 @@ packages:
 
   '@xtuc/long@4.2.2':
     resolution: {integrity: sha512-NuHqBY1PB/D8xU6s/thBgOAiAP7HOYDQ32+BFZILJ8ivkUkAHQnWfn6WhL79Owj1qmUnoN/YPhktdIoucipkAQ==}
+
+  abacatepay-nodejs-sdk@1.6.0:
+    resolution: {integrity: sha512-vcFfVNRVzcPr+2HarwOLeDarIbdcSjJPwYIaZExwfr3z+x5xwdHZWyCFi5m7WennmQDh9JbdEvwFJZutlyKixA==}
 
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
@@ -4797,6 +4803,8 @@ snapshots:
   '@xtuc/ieee754@1.2.0': {}
 
   '@xtuc/long@4.2.2': {}
+
+  abacatepay-nodejs-sdk@1.6.0: {}
 
   accepts@2.0.0:
     dependencies:
