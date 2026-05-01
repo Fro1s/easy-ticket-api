@@ -40,6 +40,9 @@ export class Batch {
   @Column('int', { default: 0 })
   sortOrder: number;
 
+  @Column('boolean', { default: false })
+  producerOnly: boolean;
+
   @Column('timestamptz', { nullable: true })
   startsAt: Date | null;
 

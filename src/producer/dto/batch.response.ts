@@ -9,6 +9,7 @@ export class BatchResponse {
   @ApiProperty() sold: number;
   @ApiProperty() reserved: number;
   @ApiProperty() sortOrder: number;
+  @ApiProperty() producerOnly: boolean;
   @ApiProperty({ nullable: true, type: String }) startsAt: string | null;
   @ApiProperty({ nullable: true, type: String }) endsAt: string | null;
 }

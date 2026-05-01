@@ -126,6 +126,7 @@ export class OrdersService {
         .createQueryBuilder('b')
         .setLock('pessimistic_write')
         .where('b.sectorId IN (:...ids)', { ids: sectorIds })
+        .andWhere('b."producerOnly" = false')
         .getMany();
       const batchesBySector = new Map<string, Batch[]>();
       for (const b of allBatches) {

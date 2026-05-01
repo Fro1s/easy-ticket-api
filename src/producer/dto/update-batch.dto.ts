@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsDateString, IsInt, IsOptional, IsString, Length, Min, ValidateIf,
+  IsBoolean, IsDateString, IsInt, IsOptional, IsString, Length, Min, ValidateIf,
 } from 'class-validator';
 
 export class UpdateBatchDto {
@@ -15,6 +15,10 @@ export class UpdateBatchDto {
 
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0)
   sortOrder?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsBoolean()
+  producerOnly?: boolean;
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional() @ValidateIf((_, v) => v !== null) @IsDateString()

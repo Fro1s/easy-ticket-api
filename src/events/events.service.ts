@@ -28,6 +28,17 @@ function toBatchSnapshot(b: Batch): BatchSnapshot {
   };
 }
 
+function publicBatches(sector: Sector): Batch[] {
+  return (sector.batches ?? []).filter((batch) => !batch.producerOnly);
+}
+
+function sumPublicBatches(
+  sector: Sector,
+  field: 'capacity' | 'sold' | 'reserved',
+): number {
+  return publicBatches(sector).reduce((sum, batch) => sum + batch[field], 0);
+}
+
 @Injectable()
 export class EventsService {
   constructor(
@@ -102,7 +113,7 @@ export class EventsService {
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((s) => {
           const { active } = resolveActiveBatch(
-            (s.batches ?? []).map(toBatchSnapshot),
+            publicBatches(s).map(toBatchSnapshot),
             now,
           );
           const available = active
@@ -111,9 +122,9 @@ export class EventsService {
           return {
             id: s.id,
             name: s.name,
-            capacity: s.capacity,
-            sold: s.sold,
-            reserved: s.reserved,
+            capacity: sumPublicBatches(s, 'capacity'),
+            sold: sumPublicBatches(s, 'sold'),
+            reserved: sumPublicBatches(s, 'reserved'),
             available,
           };
         }),
@@ -126,7 +137,7 @@ export class EventsService {
     const activeBatchPrices: number[] = [];
     for (const s of event.sectors ?? []) {
       const { active } = resolveActiveBatch(
-        (s.batches ?? []).map(toBatchSnapshot),
+        publicBatches(s).map(toBatchSnapshot),
         now,
       );
       if (active) activeBatchPrices.push(active.priceCents);
@@ -166,16 +177,16 @@ export class EventsService {
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((s) => {
           const { active, next } = resolveActiveBatch(
-            (s.batches ?? []).map(toBatchSnapshot),
+            publicBatches(s).map(toBatchSnapshot),
             now,
           );
           return {
             id: s.id,
             name: s.name,
             colorHex: s.colorHex,
-            capacity: s.capacity,
-            sold: s.sold,
-            reserved: s.reserved,
+            capacity: sumPublicBatches(s, 'capacity'),
+            sold: sumPublicBatches(s, 'sold'),
+            reserved: sumPublicBatches(s, 'reserved'),
             sortOrder: s.sortOrder,
             activeBatch: active
               ? {
