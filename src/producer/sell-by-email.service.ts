@@ -13,6 +13,8 @@ import * as QRCode from 'qrcode';
 import { Order } from '../orders/entities/order.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
 import { Sector } from '../events/entities/sector.entity';
+import { Batch } from '../events/entities/batch.entity';
+import { resolveActiveBatch } from '../events/lib/active-batch';
 import { Event } from '../events/entities/event.entity';
 import { Ticket } from '../tickets/entities/ticket.entity';
 import { OrderStatus } from '../common/enums/order-status.enum';
@@ -142,20 +144,49 @@ export class SellByEmailService {
       if (!sector) {
         throw new BadRequestException('sector does not belong to this event');
       }
-      const available = sector.capacity - sector.sold - sector.reserved;
+
+      const sectorBatches = await mgr
+        .getRepository(Batch)
+        .createQueryBuilder('b')
+        .setLock('pessimistic_write')
+        .where('b.sectorId = :sectorId', { sectorId: sector.id })
+        .getMany();
+      const { active } = resolveActiveBatch(
+        sectorBatches.map((b) => ({
+          id: b.id,
+          name: b.name,
+          priceCents: b.priceCents,
+          capacity: b.capacity,
+          sold: b.sold,
+          reserved: b.reserved,
+          sortOrder: b.sortOrder,
+          startsAt: b.startsAt,
+          endsAt: b.endsAt,
+        })),
+        new Date(),
+      );
+      if (!active) {
+        throw new BadRequestException(
+          `setor ${sector.name} sem lote disponível`,
+        );
+      }
+      const batch = sectorBatches.find((b) => b.id === active.id)!;
+      const available = batch.capacity - batch.sold - batch.reserved;
       if (available < dto.qty) {
         throw new BadRequestException(
-          `not enough stock in sector ${sector.name} (${available} left)`,
+          `not enough stock in batch ${batch.name} (${available} left)`,
         );
       }
 
+      batch.reserved += dto.qty;
       sector.reserved += dto.qty;
-      const subtotalCents = sector.priceCents * dto.qty;
+      const subtotalCents = batch.priceCents * dto.qty;
       const feeRate = Number(event.platformFeeRate);
       const feeCents = Math.round(subtotalCents * feeRate);
       const totalCents = subtotalCents + feeCents;
 
       await mgr.getRepository(Sector).save(sector);
+      await mgr.getRepository(Batch).save(batch);
 
       const order = new Order();
       order.id = createId();
@@ -172,8 +203,9 @@ export class SellByEmailService {
       const item = new OrderItem();
       item.id = createId();
       item.sectorId = sector.id;
+      item.batchId = batch.id;
       item.qty = dto.qty;
-      item.priceCents = sector.priceCents;
+      item.priceCents = batch.priceCents;
       order.items = [item];
       await mgr.getRepository(Order).save(order);
 

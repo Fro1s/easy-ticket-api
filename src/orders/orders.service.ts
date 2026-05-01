@@ -14,6 +14,8 @@ import { createId } from '@paralleldrive/cuid2';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { Sector } from '../events/entities/sector.entity';
+import { Batch } from '../events/entities/batch.entity';
+import { resolveActiveBatch } from '../events/lib/active-batch';
 import { Event } from '../events/entities/event.entity';
 import { Ticket } from '../tickets/entities/ticket.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -119,29 +121,70 @@ export class OrdersService {
       }
       const bySectorId = new Map(sectors.map((s) => [s.id, s]));
 
+      const batchRepo = mgr.getRepository(Batch);
+      const allBatches = await batchRepo
+        .createQueryBuilder('b')
+        .setLock('pessimistic_write')
+        .where('b.sectorId IN (:...ids)', { ids: sectorIds })
+        .getMany();
+      const batchesBySector = new Map<string, Batch[]>();
+      for (const b of allBatches) {
+        const arr = batchesBySector.get(b.sectorId) ?? [];
+        arr.push(b);
+        batchesBySector.set(b.sectorId, arr);
+      }
+      const now = new Date();
+      const batchesToSave: Batch[] = [];
+
       let subtotalCents = 0;
       const itemsToInsert: OrderItem[] = [];
 
       for (const item of dto.items) {
         const sector = bySectorId.get(item.sectorId)!;
-        const available = sector.capacity - sector.sold - sector.reserved;
-        if (available < item.qty) {
+        const sectorBatches = batchesBySector.get(sector.id) ?? [];
+        const { active } = resolveActiveBatch(
+          sectorBatches.map((b) => ({
+            id: b.id,
+            name: b.name,
+            priceCents: b.priceCents,
+            capacity: b.capacity,
+            sold: b.sold,
+            reserved: b.reserved,
+            sortOrder: b.sortOrder,
+            startsAt: b.startsAt,
+            endsAt: b.endsAt,
+          })),
+          now,
+        );
+        if (!active) {
           throw new ConflictException(
-            `not enough stock in sector ${sector.name} (${available} left)`,
+            `setor ${sector.name} sem lote disponível`,
           );
         }
+        const batch = sectorBatches.find((b) => b.id === active.id)!;
+        const available = batch.capacity - batch.sold - batch.reserved;
+        if (available < item.qty) {
+          throw new ConflictException(
+            `lote ${batch.name} sem estoque (${available} restante)`,
+          );
+        }
+        batch.reserved += item.qty;
         sector.reserved += item.qty;
-        subtotalCents += sector.priceCents * item.qty;
+        batchesToSave.push(batch);
+
+        subtotalCents += batch.priceCents * item.qty;
 
         const oi = new OrderItem();
         oi.id = createId();
         oi.sectorId = sector.id;
+        oi.batchId = batch.id;
         oi.qty = item.qty;
-        oi.priceCents = sector.priceCents;
+        oi.priceCents = batch.priceCents;
         itemsToInsert.push(oi);
       }
 
       await sectorRepo.save(sectors);
+      await batchRepo.save(batchesToSave);
 
       const feeRate = Number(event.platformFeeRate);
       const feeCents = Math.round(subtotalCents * feeRate);
@@ -363,11 +406,24 @@ export class OrdersService {
       .getMany();
     const bySectorId = new Map(sectors.map((s) => [s.id, s]));
 
+    const batchIds = order.items.map((it) => it.batchId);
+    const batches = await mgr
+      .getRepository(Batch)
+      .createQueryBuilder('b')
+      .setLock('pessimistic_write')
+      .where('b.id IN (:...ids)', { ids: batchIds })
+      .getMany();
+    const byBatchId = new Map(batches.map((b) => [b.id, b]));
+
     const tickets: Ticket[] = [];
     for (const item of order.items) {
       const sector = bySectorId.get(item.sectorId)!;
       sector.reserved = Math.max(0, sector.reserved - item.qty);
       sector.sold += item.qty;
+
+      const batch = byBatchId.get(item.batchId)!;
+      batch.reserved = Math.max(0, batch.reserved - item.qty);
+      batch.sold += item.qty;
 
       for (let i = 0; i < item.qty; i++) {
         const t = new Ticket();
@@ -384,6 +440,7 @@ export class OrdersService {
     }
 
     await sectorRepo.save(sectors);
+    await mgr.getRepository(Batch).save(batches);
     await ticketRepo.save(tickets);
 
     order.status = OrderStatus.PAID;
@@ -466,6 +523,20 @@ export class OrdersService {
         if (s) s.reserved = Math.max(0, s.reserved - it.qty);
       }
       await sectorRepo.save(sectors);
+
+      const batchIds = fresh.items.map((it) => it.batchId);
+      const batchesForExpire = await mgr
+        .getRepository(Batch)
+        .createQueryBuilder('b')
+        .setLock('pessimistic_write')
+        .where('b.id IN (:...ids)', { ids: batchIds })
+        .getMany();
+      const byBatchId = new Map(batchesForExpire.map((b) => [b.id, b]));
+      for (const it of fresh.items) {
+        const b = byBatchId.get(it.batchId);
+        if (b) b.reserved = Math.max(0, b.reserved - it.qty);
+      }
+      await mgr.getRepository(Batch).save(batchesForExpire);
 
       fresh.status = OrderStatus.EXPIRED;
       await orderRepo.save(fresh);
