@@ -1,32 +1,32 @@
 import {
   Column,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
-  OneToMany,
   PrimaryColumn,
 } from 'typeorm';
 import { createId } from '@paralleldrive/cuid2';
-import { Event } from './event.entity';
-import { Batch } from './batch.entity';
+import { Sector } from './sector.entity';
 
-@Entity('sectors')
-export class Sector {
+@Entity('batches')
+@Index(['sectorId', 'sortOrder'])
+export class Batch {
   @PrimaryColumn('varchar', { length: 32 })
   id: string = createId();
 
   @Column('varchar', { length: 32 })
-  eventId: string;
+  sectorId: string;
 
-  @ManyToOne(() => Event, (event) => event.sectors, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'eventId' })
-  event: Event;
+  @ManyToOne(() => Sector, (sector) => sector.batches, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'sectorId' })
+  sector: Sector;
 
   @Column('varchar', { length: 80 })
   name: string;
 
-  @Column('varchar', { length: 9 })
-  colorHex: string;
+  @Column('int')
+  priceCents: number;
 
   @Column('int')
   capacity: number;
@@ -40,6 +40,9 @@ export class Sector {
   @Column('int', { default: 0 })
   sortOrder: number;
 
-  @OneToMany(() => Batch, (batch) => batch.sector, { cascade: true })
-  batches: Batch[];
+  @Column('timestamptz', { nullable: true })
+  startsAt: Date | null;
+
+  @Column('timestamptz', { nullable: true })
+  endsAt: Date | null;
 }

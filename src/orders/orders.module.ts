@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { Sector } from '../events/entities/sector.entity';
+import { Batch } from '../events/entities/batch.entity';
 import { Event } from '../events/entities/event.entity';
 import { Ticket } from '../tickets/entities/ticket.entity';
 import { OrdersService } from './orders.service';
@@ -15,7 +16,7 @@ import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, OrderItem, Sector, Event, Ticket]),
+    TypeOrmModule.forFeature([Order, OrderItem, Sector, Batch, Event, Ticket]),
     forwardRef(() => PaymentsModule),
     UsersModule,
     EmailModule,

@@ -8,6 +8,7 @@ import {
 import { createId } from '@paralleldrive/cuid2';
 import { Order } from './order.entity';
 import { Sector } from '../../events/entities/sector.entity';
+import { Batch } from '../../events/entities/batch.entity';
 
 @Entity('order_items')
 export class OrderItem {
@@ -27,6 +28,13 @@ export class OrderItem {
   @ManyToOne(() => Sector, { eager: false })
   @JoinColumn({ name: 'sectorId' })
   sector: Sector;
+
+  @Column('varchar', { length: 32 })
+  batchId: string;
+
+  @ManyToOne(() => Batch, { eager: false })
+  @JoinColumn({ name: 'batchId' })
+  batch: Batch;
 
   @Column('int')
   qty: number;
