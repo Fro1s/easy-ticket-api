@@ -2,15 +2,26 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Category } from '../../common/enums/category.enum';
 import { EventStatus } from '../../common/enums/event-status.enum';
 
+export class EventBatchInfo {
+  @ApiProperty() id: string;
+  @ApiProperty() name: string;
+  @ApiProperty() priceCents: number;
+  @ApiProperty({ nullable: true, type: String }) startsAt: string | null;
+  @ApiProperty({ nullable: true, type: String }) endsAt: string | null;
+}
+
 export class SectorResponse {
   @ApiProperty() id: string;
   @ApiProperty() name: string;
   @ApiProperty() colorHex: string;
-  @ApiProperty() priceCents: number;
   @ApiProperty() capacity: number;
   @ApiProperty() sold: number;
   @ApiProperty() reserved: number;
   @ApiProperty() sortOrder: number;
+  @ApiProperty({ type: EventBatchInfo, nullable: true })
+  activeBatch: EventBatchInfo | null;
+  @ApiProperty({ type: EventBatchInfo, nullable: true })
+  nextBatch: EventBatchInfo | null;
 }
 
 export class VenueSummary {
