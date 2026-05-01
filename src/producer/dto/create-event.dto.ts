@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -47,6 +48,11 @@ export class CreateEventSectorDto {
   @IsInt()
   @Min(0)
   sortOrder: number;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  producerOnly?: boolean;
 }
 
 export class CreateEventDto {

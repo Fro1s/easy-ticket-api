@@ -165,12 +165,19 @@ export class SellByEmailService {
         })),
         new Date(),
       );
-      if (!active) {
+      const selectedBatch = dto.batchId
+        ? sectorBatches.find((b) => b.id === dto.batchId)
+        : null;
+      if (dto.batchId && !selectedBatch) {
+        throw new BadRequestException('batch does not belong to this sector');
+      }
+      if (!active && !selectedBatch) {
         throw new BadRequestException(
           `setor ${sector.name} sem lote disponível`,
         );
       }
-      const batch = sectorBatches.find((b) => b.id === active.id)!;
+      const batch =
+        selectedBatch ?? sectorBatches.find((b) => b.id === active!.id)!;
       const available = batch.capacity - batch.sold - batch.reserved;
       if (available < dto.qty) {
         throw new BadRequestException(

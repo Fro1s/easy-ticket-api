@@ -19,6 +19,14 @@ export class SellByEmailDto {
   @IsString()
   sectorId: string;
 
+  @ApiProperty({
+    required: false,
+    description: 'Optional batch id. Producer/admin sales can target private batches.',
+  })
+  @IsOptional()
+  @IsString()
+  batchId?: string;
+
   @ApiProperty({ minimum: 1, maximum: 6 })
   @IsInt()
   @Min(1)

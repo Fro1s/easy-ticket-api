@@ -302,6 +302,7 @@ export class ProducerEventsService {
           sold: 0,
           reserved: 0,
           sortOrder: 1,
+          producerOnly: dto.sectors[index].producerOnly ?? false,
           startsAt: null,
           endsAt: null,
         }),
