@@ -56,6 +56,7 @@ export class MeService {
       .leftJoin('events', 'e', 'e.id = t.eventId')
       .leftJoin('venues', 'v', 'v.id = e.venueId')
       .leftJoin('sectors', 's', 's.id = t.sectorId')
+      .leftJoin('order_items', 'oi', 'oi.orderId = t.orderId AND oi.sectorId = t.sectorId')
       .where('t.userId = :userId', { userId });
 
     if (query.status) {
@@ -89,7 +90,7 @@ export class MeService {
         's.id AS s_id',
         's.name AS s_name',
         's.colorHex AS s_color',
-        's.priceCents AS s_price',
+        'oi.priceCents AS oi_price',
       ])
       .skip(skip)
       .take(pageSize)
@@ -120,7 +121,7 @@ export class MeService {
         id: r.s_id,
         name: r.s_name,
         colorHex: r.s_color,
-        priceCents: Number(r.s_price),
+        priceCents: Number(r.oi_price ?? 0),
       },
     }));
 
@@ -133,6 +134,7 @@ export class MeService {
       .leftJoin('events', 'e', 'e.id = t.eventId')
       .leftJoin('venues', 'v', 'v.id = e.venueId')
       .leftJoin('sectors', 's', 's.id = t.sectorId')
+      .leftJoin('order_items', 'oi', 'oi.orderId = t.orderId AND oi.sectorId = t.sectorId')
       .where('t.id = :ticketId', { ticketId })
       .andWhere('t.userId = :userId', { userId })
       .select([
@@ -157,7 +159,7 @@ export class MeService {
         's.id AS s_id',
         's.name AS s_name',
         's.colorHex AS s_color',
-        's.priceCents AS s_price',
+        'oi.priceCents AS oi_price',
       ])
       .getRawOne();
 
@@ -188,7 +190,7 @@ export class MeService {
         id: row.s_id,
         name: row.s_name,
         colorHex: row.s_color,
-        priceCents: Number(row.s_price),
+        priceCents: Number(row.oi_price ?? 0),
       },
     };
   }
