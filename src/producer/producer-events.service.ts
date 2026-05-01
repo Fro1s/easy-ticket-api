@@ -9,6 +9,8 @@ import { DataSource, In, Repository } from 'typeorm';
 import { createId } from '@paralleldrive/cuid2';
 import { Event } from '../events/entities/event.entity';
 import { Sector } from '../events/entities/sector.entity';
+import { Batch } from '../events/entities/batch.entity';
+import { resolveActiveBatch } from '../events/lib/active-batch';
 import { Order } from '../orders/entities/order.entity';
 import { Venue } from '../venues/entities/venue.entity';
 import { Producer } from '../producers/entities/producer.entity';
@@ -72,7 +74,8 @@ export class ProducerEventsService {
     const qb = this.events
       .createQueryBuilder('event')
       .leftJoinAndSelect('event.venue', 'venue')
-      .leftJoinAndSelect('event.sectors', 'sector');
+      .leftJoinAndSelect('event.sectors', 'sector')
+      .leftJoinAndSelect('sector.batches', 'batch');
     if (producerId) {
       qb.where('event.producerId = :producerId', { producerId });
     }
@@ -117,7 +120,7 @@ export class ProducerEventsService {
     const producerId = await this.resolveScope(currentUser);
     const event = await this.events.findOne({
       where: { id: eventId },
-      relations: { venue: true, sectors: true },
+      relations: { venue: true, sectors: { batches: true } },
     });
     if (!event) throw new NotFoundException('event not found');
     if (producerId && event.producerId !== producerId) {
@@ -139,7 +142,7 @@ export class ProducerEventsService {
           id: s.id,
           name: s.name,
           colorHex: s.colorHex,
-          priceCents: s.priceCents,
+          priceCents: this.currentPriceCents(s),
           capacity: s.capacity,
           sold: s.sold,
           reserved: s.reserved,
@@ -160,7 +163,12 @@ export class ProducerEventsService {
   private async computeKpis(event: Event): Promise<ProducerEventKpis> {
     const ticketsSold = event.sectors.reduce((sum, s) => sum + s.sold, 0);
     const grossRevenueCents = event.sectors.reduce(
-      (sum, s) => sum + s.sold * s.priceCents,
+      (sum, s) =>
+        sum +
+        (s.batches ?? []).reduce(
+          (batchSum, b) => batchSum + b.sold * b.priceCents,
+          0,
+        ),
       0,
     );
     const platformFeeCents = Math.round(
@@ -186,6 +194,17 @@ export class ProducerEventsService {
       netCents,
       pendingManualOrdersCount,
     };
+  }
+
+  private currentPriceCents(sector: Sector): number {
+    const batches = sector.batches ?? [];
+    const { active } = resolveActiveBatch(batches, new Date());
+    return (
+      active?.priceCents ??
+      batches.slice().sort((a, b) => a.sortOrder - b.sortOrder)[0]
+        ?.priceCents ??
+      0
+    );
   }
 
   async create(
@@ -265,7 +284,6 @@ export class ProducerEventsService {
           eventId,
           name: s.name,
           colorHex: s.colorHex,
-          priceCents: s.priceCents,
           capacity: s.capacity,
           sortOrder: s.sortOrder,
           sold: 0,
@@ -273,6 +291,22 @@ export class ProducerEventsService {
         }),
       );
       await mgr.getRepository(Sector).save(sectors);
+
+      const batches = sectors.map((sector, index) =>
+        mgr.getRepository(Batch).create({
+          id: createId(),
+          sectorId: sector.id,
+          name: 'Lote 1',
+          priceCents: dto.sectors[index].priceCents,
+          capacity: sector.capacity,
+          sold: 0,
+          reserved: 0,
+          sortOrder: 1,
+          startsAt: null,
+          endsAt: null,
+        }),
+      );
+      await mgr.getRepository(Batch).save(batches);
     });
 
     return this.getById(currentUser, eventId);

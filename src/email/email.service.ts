@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
+import { Resend, type Attachment } from 'resend';
 
 export interface SendEmailInput {
   to: string;
   subject: string;
   html: string;
   text?: string;
+  attachments?: Attachment[];
 }
 
 interface MagicLinkPayload {
@@ -26,6 +27,7 @@ interface TicketEmailPayload {
     shortCode: string;
     sectorName: string;
     qrPngBase64: string;
+    qrCid?: string;
   }>;
   claimUrl?: string;
 }
@@ -69,6 +71,7 @@ export class EmailService {
         subject: input.subject,
         html: input.html,
         text: input.text,
+        attachments: input.attachments,
         ...(this.replyTo ? { replyTo: this.replyTo } : {}),
       });
       if (result.error) {
@@ -99,11 +102,13 @@ export class EmailService {
     const subject = payload.claimUrl
       ? `Você ganhou ingresso pra ${payload.eventArtist}`
       : `Você tem ingressos novos · ${payload.eventArtist}`;
-    const html = renderTicketEmail(payload);
+    const email = withInlineQrAttachments(payload);
+    const html = renderTicketEmail(email.payload);
     await this.send({
       to: payload.to,
       subject,
       html,
+      attachments: email.attachments,
       text: payload.claimUrl
         ? `Você recebeu ingresso pra ${payload.eventArtist}. Acesse: ${payload.claimUrl}`
         : `Seus ingressos pra ${payload.eventArtist} estão disponíveis em ${this.webBaseUrl}/meus-ingressos`,
@@ -111,14 +116,39 @@ export class EmailService {
   }
 
   async sendTicketPurchased(payload: TicketEmailPayload): Promise<void> {
-    const html = renderTicketEmail(payload);
+    const email = withInlineQrAttachments(payload);
+    const html = renderTicketEmail(email.payload);
     await this.send({
       to: payload.to,
       subject: `Bora! Seus ingressos pra ${payload.eventArtist}`,
       html,
+      attachments: email.attachments,
       text: `Seus ingressos estão na sua conta: ${this.webBaseUrl}/meus-ingressos`,
     });
   }
+}
+
+function withInlineQrAttachments(payload: TicketEmailPayload): {
+  payload: TicketEmailPayload;
+  attachments: Attachment[];
+} {
+  const tickets = payload.tickets.map((ticket, index) => {
+    const safeCode = ticket.shortCode.replace(/[^a-zA-Z0-9_-]/g, '-');
+    return {
+      ...ticket,
+      qrCid: `ticket-qr-${index}-${safeCode}@easy-ticket`,
+    };
+  });
+
+  return {
+    payload: { ...payload, tickets },
+    attachments: tickets.map((ticket, index) => ({
+      filename: `ingresso-${index + 1}-${ticket.shortCode}.png`,
+      content: Buffer.from(ticket.qrPngBase64, 'base64'),
+      contentType: 'image/png',
+      contentId: ticket.qrCid,
+    })),
+  };
 }
 
 function escape(str: string): string {
@@ -150,7 +180,7 @@ function renderTicketEmail(p: TicketEmailPayload): string {
       <div style="font-family:'Geist Mono',ui-monospace,monospace;font-size:14px;color:#F7F7F2;margin-top:4px">${escape(t.shortCode)}</div>
     </td>
     <td style="padding:16px;border-bottom:1px solid #25252F;text-align:right">
-      <img src="data:image/png;base64,${t.qrPngBase64}" alt="QR" width="120" height="120" style="background:#fff;padding:6px;border-radius:4px"/>
+      <img src="${t.qrCid ? `cid:${escape(t.qrCid)}` : `data:image/png;base64,${t.qrPngBase64}`}" alt="QR" width="120" height="120" style="background:#fff;padding:6px;border-radius:4px"/>
     </td>
   </tr>`,
     )

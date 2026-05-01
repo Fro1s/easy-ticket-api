@@ -7,6 +7,7 @@ import { Producer } from '../producers/entities/producer.entity';
 import { Venue } from '../venues/entities/venue.entity';
 import { Event } from '../events/entities/event.entity';
 import { Sector } from '../events/entities/sector.entity';
+import { Batch } from '../events/entities/batch.entity';
 import { User } from '../users/entities/user.entity';
 import { Ticket } from '../tickets/entities/ticket.entity';
 import { Order } from '../orders/entities/order.entity';
@@ -164,6 +165,7 @@ async function main() {
   const venueRepo = dataSource.getRepository(Venue);
   const eventRepo = dataSource.getRepository(Event);
   const sectorRepo = dataSource.getRepository(Sector);
+  const batchRepo = dataSource.getRepository(Batch);
   const userRepo = dataSource.getRepository(User);
   const ticketRepo = dataSource.getRepository(Ticket);
   const orderRepo = dataSource.getRepository(Order);
@@ -178,6 +180,7 @@ async function main() {
   await ticketRepo.createQueryBuilder().delete().execute();
   await orderItemRepo.createQueryBuilder().delete().execute();
   await orderRepo.createQueryBuilder().delete().execute();
+  await batchRepo.createQueryBuilder().delete().execute();
   await sectorRepo.createQueryBuilder().delete().execute();
   await eventRepo.createQueryBuilder().delete().execute();
   await venueRepo.createQueryBuilder().delete().execute();
@@ -268,14 +271,23 @@ async function main() {
     }));
 
     for (const sec of s.sectors) {
-      await sectorRepo.save(sectorRepo.create({
+      const sector = await sectorRepo.save(sectorRepo.create({
         id: createId(),
         eventId: event.id,
         name: sec.name,
         colorHex: sec.colorHex,
-        priceCents: sec.priceCents,
         capacity: sec.capacity,
         sortOrder: sec.sortOrder,
+      }));
+      await batchRepo.save(batchRepo.create({
+        id: createId(),
+        sectorId: sector.id,
+        name: 'Lote 1',
+        priceCents: sec.priceCents,
+        capacity: sec.capacity,
+        sortOrder: 1,
+        startsAt: null,
+        endsAt: null,
       }));
     }
     console.log(`[seed] event ${s.slug} (${s.sectors.length} sectors, provider=${event.paymentProvider}, fee=${event.platformFeeRate})`);

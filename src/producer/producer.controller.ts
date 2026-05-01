@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -22,7 +23,12 @@ import type { AuthenticatedUser } from '../auth/decorators/current-user.decorato
 import { Role } from '../common/enums/role.enum';
 import { ProducerService } from './producer.service';
 import { ProducerEventsService } from './producer-events.service';
+import { ProducerBatchesService } from './producer-batches.service';
 import { SellByEmailService } from './sell-by-email.service';
+import { CreateBatchDto } from './dto/create-batch.dto';
+import { UpdateBatchDto } from './dto/update-batch.dto';
+import { BatchListResponse, BatchResponse } from './dto/batch.response';
+import { CancelOrderResponse } from './dto/cancel-order.response';
 import { ConfirmManualPaymentDto } from './dto/confirm-manual-payment.dto';
 import { SellByEmailDto, SellByEmailResponse } from './dto/sell-by-email.dto';
 import { ValidateTicketDto, ValidateTicketResponse } from './dto/validate-ticket.dto';
@@ -47,6 +53,7 @@ export class ProducerController {
     private readonly producer: ProducerService,
     private readonly events: ProducerEventsService,
     private readonly sellByEmail: SellByEmailService,
+    private readonly batchesSvc: ProducerBatchesService,
   ) {}
 
   @Get('me/dashboard')
@@ -167,4 +174,57 @@ export class ProducerController {
   ): Promise<ConfirmedOrderResponse> {
     return this.producer.confirmManualPayment(user, id, dto.reference ?? null);
   }
+
+  @Post('orders/:id/cancel')
+  @ApiOperation({
+    summary:
+      'Cancel a pending unpaid order and release its reserved ticket stock',
+  })
+  @ApiResponse({ status: 200, type: CancelOrderResponse })
+  cancelPendingOrder(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<CancelOrderResponse> {
+    return this.producer.cancelPendingOrder(user, id);
+  }
+
+  @Get('events/:eventId/sectors/:sectorId/batches')
+  @ApiOperation({ summary: 'List batches for a sector' })
+  @ApiResponse({ status: 200, type: BatchListResponse })
+  listBatches(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('eventId') eventId: string,
+    @Param('sectorId') sectorId: string,
+  ) { return this.batchesSvc.list(u, eventId, sectorId); }
+
+  @Post('events/:eventId/sectors/:sectorId/batches')
+  @ApiOperation({ summary: 'Create a batch in a sector' })
+  @ApiResponse({ status: 201, type: BatchResponse })
+  createBatch(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('eventId') eventId: string,
+    @Param('sectorId') sectorId: string,
+    @Body() dto: CreateBatchDto,
+  ) { return this.batchesSvc.create(u, eventId, sectorId, dto); }
+
+  @Patch('events/:eventId/sectors/:sectorId/batches/:batchId')
+  @ApiOperation({ summary: 'Update a batch' })
+  @ApiResponse({ status: 200, type: BatchResponse })
+  updateBatch(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('eventId') eventId: string,
+    @Param('sectorId') sectorId: string,
+    @Param('batchId') batchId: string,
+    @Body() dto: UpdateBatchDto,
+  ) { return this.batchesSvc.update(u, eventId, sectorId, batchId, dto); }
+
+  @Delete('events/:eventId/sectors/:sectorId/batches/:batchId')
+  @ApiOperation({ summary: 'Delete a batch (only if no tickets sold)' })
+  @ApiResponse({ status: 204 })
+  removeBatch(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('eventId') eventId: string,
+    @Param('sectorId') sectorId: string,
+    @Param('batchId') batchId: string,
+  ) { return this.batchesSvc.remove(u, eventId, sectorId, batchId); }
 }

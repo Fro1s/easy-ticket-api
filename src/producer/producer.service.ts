@@ -15,14 +15,18 @@ import { Order } from '../orders/entities/order.entity';
 import { ManualPayment } from '../orders/entities/manual-payment.entity';
 import { Ticket } from '../tickets/entities/ticket.entity';
 import { Event } from '../events/entities/event.entity';
+import { Sector } from '../events/entities/sector.entity';
+import { Batch } from '../events/entities/batch.entity';
 import { OrdersService } from '../orders/orders.service';
 import { UsersService } from '../users/users.service';
 import { Role } from '../common/enums/role.enum';
 import { PaymentProvider } from '../common/enums/payment-provider.enum';
 import { TicketStatus } from '../common/enums/ticket-status.enum';
+import { OrderStatus } from '../common/enums/order-status.enum';
 import { ConfirmedOrderResponse } from '../orders/dto/order.response';
 import { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { ValidateTicketDto, ValidateTicketResponse } from './dto/validate-ticket.dto';
+import { CancelOrderResponse } from './dto/cancel-order.response';
 
 @Injectable()
 export class ProducerService {
@@ -87,6 +91,93 @@ export class ProducerService {
         allowMissingPaymentMethod: true,
         sendEmail: true,
       });
+    });
+  }
+
+  async cancelPendingOrder(
+    currentUser: AuthenticatedUser,
+    orderId: string,
+  ): Promise<CancelOrderResponse> {
+    const dbUser = await this.users.findById(currentUser.id);
+    if (!dbUser) throw new ForbiddenException();
+
+    return this.dataSource.transaction(async (mgr) => {
+      const order = await mgr
+        .getRepository(Order)
+        .createQueryBuilder('o')
+        .setLock('pessimistic_write')
+        .leftJoinAndSelect('o.items', 'item')
+        .leftJoinAndSelect('item.sector', 'sector')
+        .leftJoinAndSelect('sector.event', 'event')
+        .where('o.id = :orderId', { orderId })
+        .getOne();
+
+      if (!order) throw new NotFoundException('order not found');
+
+      const event = order.items[0]?.sector?.event;
+      if (!event) throw new NotFoundException('order has no event');
+
+      if (
+        currentUser.role !== Role.ADMIN &&
+        dbUser.producerId !== event.producerId
+      ) {
+        throw new ForbiddenException(
+          'producer can only cancel orders for their own events',
+        );
+      }
+
+      if (
+        order.status === OrderStatus.CANCELLED ||
+        order.status === OrderStatus.EXPIRED
+      ) {
+        return { orderId: order.id, status: order.status, releasedQty: 0 };
+      }
+      if (order.status !== OrderStatus.PENDING) {
+        throw new BadRequestException(
+          'only pending unpaid orders can be cancelled here',
+        );
+      }
+
+      const sectorIds = order.items.map((item) => item.sectorId);
+      const batchIds = order.items.map((item) => item.batchId);
+
+      const sectors = await mgr
+        .getRepository(Sector)
+        .createQueryBuilder('s')
+        .setLock('pessimistic_write')
+        .where('s.id IN (:...ids)', { ids: sectorIds })
+        .getMany();
+      const batches = await mgr
+        .getRepository(Batch)
+        .createQueryBuilder('b')
+        .setLock('pessimistic_write')
+        .where('b.id IN (:...ids)', { ids: batchIds })
+        .getMany();
+
+      const sectorsById = new Map(sectors.map((sector) => [sector.id, sector]));
+      const batchesById = new Map(batches.map((batch) => [batch.id, batch]));
+      let releasedQty = 0;
+
+      for (const item of order.items) {
+        const sector = sectorsById.get(item.sectorId);
+        if (sector) {
+          sector.reserved = Math.max(0, sector.reserved - item.qty);
+        }
+        const batch = batchesById.get(item.batchId);
+        if (batch) {
+          batch.reserved = Math.max(0, batch.reserved - item.qty);
+        }
+        releasedQty += item.qty;
+      }
+
+      await mgr.getRepository(Sector).save(sectors);
+      await mgr.getRepository(Batch).save(batches);
+
+      order.status = OrderStatus.CANCELLED;
+      order.reservedUntil = new Date();
+      await mgr.getRepository(Order).save(order);
+
+      return { orderId: order.id, status: order.status, releasedQty };
     });
   }
 
