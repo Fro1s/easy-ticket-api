@@ -22,6 +22,7 @@ import { Type } from 'class-transformer';
 import { Category } from '../../common/enums/category.enum';
 import { PaymentProvider } from '../../common/enums/payment-provider.enum';
 import { PixKeyType } from '../../common/enums/pix-key-type.enum';
+import { CreateBatchDto } from './create-batch.dto';
 
 export class CreateEventSectorDto {
   @ApiProperty()
@@ -33,11 +34,6 @@ export class CreateEventSectorDto {
   @IsString()
   @Matches(/^#[0-9A-Fa-f]{6,8}$/)
   colorHex: string;
-
-  @ApiProperty()
-  @IsInt()
-  @Min(0)
-  priceCents: number;
 
   @ApiProperty()
   @IsInt()
@@ -53,6 +49,14 @@ export class CreateEventSectorDto {
   @IsOptional()
   @IsBoolean()
   producerOnly?: boolean;
+
+  @ApiProperty({ type: [CreateBatchDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => CreateBatchDto)
+  batches: CreateBatchDto[];
 }
 
 export class CreateEventDto {

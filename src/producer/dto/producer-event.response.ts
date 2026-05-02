@@ -11,15 +11,28 @@ export class ProducerEventVenue {
   @ApiProperty() state: string;
 }
 
-export class ProducerEventSectorSummary {
+export class ProducerEventBatchSummary {
   @ApiProperty() id: string;
   @ApiProperty() name: string;
-  @ApiProperty() colorHex: string;
   @ApiProperty() priceCents: number;
   @ApiProperty() capacity: number;
   @ApiProperty() sold: number;
   @ApiProperty() reserved: number;
   @ApiProperty() sortOrder: number;
+  @ApiProperty({ nullable: true, type: String }) startsAt: string | null;
+  @ApiProperty({ nullable: true, type: String }) endsAt: string | null;
+}
+
+export class ProducerEventSectorSummary {
+  @ApiProperty() id: string;
+  @ApiProperty() name: string;
+  @ApiProperty() colorHex: string;
+  @ApiProperty() capacity: number;
+  @ApiProperty() sold: number;
+  @ApiProperty() reserved: number;
+  @ApiProperty() sortOrder: number;
+  @ApiProperty({ type: [ProducerEventBatchSummary] })
+  batches: ProducerEventBatchSummary[];
 }
 
 export class ProducerEventKpis {

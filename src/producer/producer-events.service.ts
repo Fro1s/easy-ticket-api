@@ -10,8 +10,8 @@ import { createId } from '@paralleldrive/cuid2';
 import { Event } from '../events/entities/event.entity';
 import { Sector } from '../events/entities/sector.entity';
 import { Batch } from '../events/entities/batch.entity';
-import { resolveActiveBatch } from '../events/lib/active-batch';
 import { Order } from '../orders/entities/order.entity';
+import { OrderItem } from '../orders/entities/order-item.entity';
 import { Venue } from '../venues/entities/venue.entity';
 import { Producer } from '../producers/entities/producer.entity';
 import { OrderStatus } from '../common/enums/order-status.enum';
@@ -142,11 +142,24 @@ export class ProducerEventsService {
           id: s.id,
           name: s.name,
           colorHex: s.colorHex,
-          priceCents: this.currentPriceCents(s),
           capacity: s.capacity,
           sold: s.sold,
           reserved: s.reserved,
           sortOrder: s.sortOrder,
+          batches: (s.batches ?? [])
+            .slice()
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((b) => ({
+              id: b.id,
+              name: b.name,
+              priceCents: b.priceCents,
+              capacity: b.capacity,
+              sold: b.sold,
+              reserved: b.reserved,
+              sortOrder: b.sortOrder,
+              startsAt: b.startsAt ? b.startsAt.toISOString() : null,
+              endsAt: b.endsAt ? b.endsAt.toISOString() : null,
+            })),
         })),
     };
   }
@@ -162,15 +175,16 @@ export class ProducerEventsService {
 
   private async computeKpis(event: Event): Promise<ProducerEventKpis> {
     const ticketsSold = event.sectors.reduce((sum, s) => sum + s.sold, 0);
-    const grossRevenueCents = event.sectors.reduce(
-      (sum, s) =>
-        sum +
-        (s.batches ?? []).reduce(
-          (batchSum, b) => batchSum + b.sold * b.priceCents,
-          0,
-        ),
-      0,
-    );
+    const revenueRow = await this.dataSource
+      .getRepository(OrderItem)
+      .createQueryBuilder('oi')
+      .innerJoin('oi.order', 'o')
+      .innerJoin('oi.sector', 's')
+      .select('COALESCE(SUM(oi.priceCents * oi.qty), 0)', 'gross')
+      .where('s.eventId = :eventId', { eventId: event.id })
+      .andWhere('o.status = :paid', { paid: OrderStatus.PAID })
+      .getRawOne<{ gross: string }>();
+    const grossRevenueCents = Number(revenueRow?.gross ?? 0);
     const platformFeeCents = Math.round(
       grossRevenueCents * Number(event.platformFeeRate),
     );
@@ -194,17 +208,6 @@ export class ProducerEventsService {
       netCents,
       pendingManualOrdersCount,
     };
-  }
-
-  private currentPriceCents(sector: Sector): number {
-    const batches = sector.batches ?? [];
-    const { active } = resolveActiveBatch(batches, new Date());
-    return (
-      active?.priceCents ??
-      batches.slice().sort((a, b) => a.sortOrder - b.sortOrder)[0]
-        ?.priceCents ??
-      0
-    );
   }
 
   async create(
@@ -238,10 +241,13 @@ export class ProducerEventsService {
       throw new BadRequestException('doorsAt must be <= startsAt');
     }
 
-    const totalCapacity = dto.sectors.reduce((s, c) => s + c.capacity, 0);
+    const totalCapacity = dto.sectors.reduce(
+      (s, c) => s + c.batches.reduce((bs, b) => bs + b.capacity, 0),
+      0,
+    );
     if (totalCapacity > venue.capacity) {
       throw new BadRequestException(
-        `total sector capacity (${totalCapacity}) exceeds venue capacity (${venue.capacity})`,
+        `total batch capacity (${totalCapacity}) exceeds venue capacity (${venue.capacity})`,
       );
     }
 
@@ -292,38 +298,41 @@ export class ProducerEventsService {
       );
       await mgr.getRepository(Sector).save(sectors);
 
-      const batches = sectors.map((sector, index) =>
-        mgr.getRepository(Batch).create({
-          id: createId(),
-          sectorId: sector.id,
-          name: 'Lote 1',
-          priceCents: dto.sectors[index].priceCents,
-          capacity: sector.capacity,
-          sold: 0,
-          reserved: 0,
-          sortOrder: 1,
-          producerOnly: dto.sectors[index].producerOnly ?? false,
-          startsAt: null,
-          endsAt: null,
-        }),
-      );
-      await mgr.getRepository(Batch).save(batches);
+      for (const dtoSector of dto.sectors) {
+        const sector = sectors.find((s) => s.name === dtoSector.name)!;
+        const batchEntities = dtoSector.batches.map((b) =>
+          mgr.getRepository(Batch).create({
+            id: createId(),
+            sectorId: sector.id,
+            name: b.name,
+            priceCents: b.priceCents,
+            capacity: b.capacity,
+            sold: 0,
+            reserved: 0,
+            sortOrder: b.sortOrder,
+            producerOnly: b.producerOnly ?? dtoSector.producerOnly ?? false,
+            startsAt: b.startsAt ? new Date(b.startsAt) : null,
+            endsAt: b.endsAt ? new Date(b.endsAt) : null,
+          }),
+        );
+        sector.capacity = dtoSector.batches.reduce(
+          (s, b) => s + b.capacity,
+          0,
+        );
+        await mgr.getRepository(Batch).save(batchEntities);
+      }
+      await mgr.getRepository(Sector).save(sectors);
     });
 
     return this.getById(currentUser, eventId);
   }
 
-  async updateDraft(
+  async updateEvent(
     currentUser: AuthenticatedUser,
     eventId: string,
     dto: import('./dto/update-event.dto').UpdateEventDto,
   ): Promise<ProducerEventDetail> {
     const detail = await this.getById(currentUser, eventId);
-    if (detail.status !== EventStatus.DRAFT) {
-      throw new BadRequestException(
-        'apenas eventos em rascunho podem ser editados',
-      );
-    }
 
     const patch: Partial<Event> = {};
     if (dto.title !== undefined) patch.title = dto.title;

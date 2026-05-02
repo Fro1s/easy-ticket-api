@@ -106,7 +106,7 @@ export class ProducerController {
     @Param('id') id: string,
     @Body() dto: UpdateEventDto,
   ): Promise<ProducerEventDetail> {
-    return this.events.updateDraft(user, id, dto);
+    return this.events.updateEvent(user, id, dto);
   }
 
   @Post('events/:id/publish')
