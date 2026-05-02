@@ -56,7 +56,8 @@ export class ProducerEventSummary {
   @ApiProperty({ enum: PaymentProvider }) paymentProvider: PaymentProvider;
   @ApiProperty() platformFeeRate: number;
   @ApiProperty({ type: ProducerEventVenue }) venue: ProducerEventVenue;
-  @ApiProperty({ type: ProducerEventKpis }) kpis: ProducerEventKpis;
+  @ApiProperty({ type: ProducerEventKpis, nullable: true })
+  kpis: ProducerEventKpis | null;
 }
 
 export class ProducerEventDetail extends ProducerEventSummary {

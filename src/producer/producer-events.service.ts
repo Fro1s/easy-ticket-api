@@ -84,10 +84,23 @@ export class ProducerEventsService {
     const events = await qb.getMany();
     const items = await Promise.all(
       events.map(async (e) =>
-        this.toSummary(e, await this.computeKpis(e)),
+        this.sanitizeForRole(
+          currentUser,
+          this.toSummary(e, await this.computeKpis(e)),
+        ),
       ),
     );
     return { items };
+  }
+
+  private sanitizeForRole<T extends ProducerEventSummary>(
+    user: AuthenticatedUser,
+    e: T,
+  ): T {
+    if (user.role === Role.STAFF) {
+      return { ...e, kpis: null, platformFeeRate: 0 };
+    }
+    return e;
   }
 
   async dashboard(
@@ -96,18 +109,21 @@ export class ProducerEventsService {
     const { items } = await this.list(currentUser);
     return {
       events: items,
-      totalTicketsSold: items.reduce((s, e) => s + e.kpis.ticketsSold, 0),
+      totalTicketsSold: items.reduce(
+        (s, e) => s + (e.kpis?.ticketsSold ?? 0),
+        0,
+      ),
       totalGrossRevenueCents: items.reduce(
-        (s, e) => s + e.kpis.grossRevenueCents,
+        (s, e) => s + (e.kpis?.grossRevenueCents ?? 0),
         0,
       ),
       totalPlatformFeeCents: items.reduce(
-        (s, e) => s + e.kpis.platformFeeCents,
+        (s, e) => s + (e.kpis?.platformFeeCents ?? 0),
         0,
       ),
-      totalNetCents: items.reduce((s, e) => s + e.kpis.netCents, 0),
+      totalNetCents: items.reduce((s, e) => s + (e.kpis?.netCents ?? 0), 0),
       totalPendingManualOrders: items.reduce(
-        (s, e) => s + e.kpis.pendingManualOrdersCount,
+        (s, e) => s + (e.kpis?.pendingManualOrdersCount ?? 0),
         0,
       ),
     };
@@ -128,7 +144,7 @@ export class ProducerEventsService {
     }
     const kpis = await this.computeKpis(event);
     const summary = this.toSummary(event, kpis);
-    return {
+    return this.sanitizeForRole(currentUser, {
       ...summary,
       description: event.description,
       ageRating: event.ageRating,
@@ -161,7 +177,7 @@ export class ProducerEventsService {
               endsAt: b.endsAt ? b.endsAt.toISOString() : null,
             })),
         })),
-    };
+    });
   }
 
   async getBySlug(

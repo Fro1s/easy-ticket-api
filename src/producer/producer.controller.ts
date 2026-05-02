@@ -46,7 +46,6 @@ import { ConfirmedOrderResponse } from '../orders/dto/order.response';
 @ApiTags('producer')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.PRODUCER, Role.ADMIN)
 @Controller('producer')
 export class ProducerController {
   constructor(
@@ -57,6 +56,7 @@ export class ProducerController {
   ) {}
 
   @Get('me/dashboard')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({
     summary: 'Aggregated KPIs for the producer (admin sees all events)',
   })
@@ -68,6 +68,7 @@ export class ProducerController {
   }
 
   @Get('events')
+  @Roles(Role.PRODUCER, Role.ADMIN, Role.STAFF)
   @ApiOperation({
     summary: 'List events scoped to the current producer (admin sees all)',
   })
@@ -79,6 +80,7 @@ export class ProducerController {
   }
 
   @Post('events')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({ summary: 'Create a draft event' })
   @ApiResponse({ status: 201, type: ProducerEventDetail })
   createEvent(
@@ -89,6 +91,7 @@ export class ProducerController {
   }
 
   @Get('events/:slug')
+  @Roles(Role.PRODUCER, Role.ADMIN, Role.STAFF)
   @ApiOperation({ summary: 'Get a single event by slug (producer-scoped)' })
   @ApiResponse({ status: 200, type: ProducerEventDetail })
   getEvent(
@@ -99,6 +102,7 @@ export class ProducerController {
   }
 
   @Patch('events/:id')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({ summary: 'Update a DRAFT event (producer-scoped)' })
   @ApiResponse({ status: 200, type: ProducerEventDetail })
   updateEvent(
@@ -110,6 +114,7 @@ export class ProducerController {
   }
 
   @Post('events/:id/publish')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({
     summary: 'Publish a draft event (validates capacity + dates)',
   })
@@ -122,6 +127,7 @@ export class ProducerController {
   }
 
   @Get('events/:slug/orders')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({
     summary: 'List orders for an event (filterable + paginated)',
   })
@@ -135,6 +141,7 @@ export class ProducerController {
   }
 
   @Post('events/:id/sell-by-email')
+  @Roles(Role.PRODUCER, Role.ADMIN, Role.STAFF)
   @ApiOperation({
     summary:
       'Sell tickets directly by email — creates ghost user if needed, emits tickets, sends email with QR + claim link.',
@@ -149,6 +156,7 @@ export class ProducerController {
   }
 
   @Post('tickets/validate')
+  @Roles(Role.PRODUCER, Role.ADMIN, Role.STAFF)
   @ApiOperation({
     summary:
       'Validate a QR ticket at the venue gate — flips status to USED (pessimistic lock, idempotent on 409)',
@@ -162,6 +170,7 @@ export class ProducerController {
   }
 
   @Post('orders/:id/confirm-manual-payment')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({
     summary:
       'Manually confirm a Manual-PIX order (producer/admin reconciles payment offline)',
@@ -176,6 +185,7 @@ export class ProducerController {
   }
 
   @Post('orders/:id/cancel')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({
     summary:
       'Cancel a pending unpaid order and release its reserved ticket stock',
@@ -189,6 +199,7 @@ export class ProducerController {
   }
 
   @Get('events/:eventId/sectors/:sectorId/batches')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({ summary: 'List batches for a sector' })
   @ApiResponse({ status: 200, type: BatchListResponse })
   listBatches(
@@ -198,6 +209,7 @@ export class ProducerController {
   ) { return this.batchesSvc.list(u, eventId, sectorId); }
 
   @Post('events/:eventId/sectors/:sectorId/batches')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({ summary: 'Create a batch in a sector' })
   @ApiResponse({ status: 201, type: BatchResponse })
   createBatch(
@@ -208,6 +220,7 @@ export class ProducerController {
   ) { return this.batchesSvc.create(u, eventId, sectorId, dto); }
 
   @Patch('events/:eventId/sectors/:sectorId/batches/:batchId')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({ summary: 'Update a batch' })
   @ApiResponse({ status: 200, type: BatchResponse })
   updateBatch(
@@ -219,6 +232,7 @@ export class ProducerController {
   ) { return this.batchesSvc.update(u, eventId, sectorId, batchId, dto); }
 
   @Delete('events/:eventId/sectors/:sectorId/batches/:batchId')
+  @Roles(Role.PRODUCER, Role.ADMIN)
   @ApiOperation({ summary: 'Delete a batch (only if no tickets sold)' })
   @ApiResponse({ status: 204 })
   removeBatch(
