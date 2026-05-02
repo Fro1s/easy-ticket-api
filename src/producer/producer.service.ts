@@ -106,13 +106,17 @@ export class ProducerService {
         .getRepository(Order)
         .createQueryBuilder('o')
         .setLock('pessimistic_write')
-        .leftJoinAndSelect('o.items', 'item')
-        .leftJoinAndSelect('item.sector', 'sector')
-        .leftJoinAndSelect('sector.event', 'event')
         .where('o.id = :orderId', { orderId })
         .getOne();
 
       if (!order) throw new NotFoundException('order not found');
+
+      const fullOrder = await mgr.getRepository(Order).findOne({
+        where: { id: order.id },
+        relations: { items: { sector: { event: true } } },
+      });
+      if (!fullOrder) throw new NotFoundException('order not found');
+      order.items = fullOrder.items;
 
       const event = order.items[0]?.sector?.event;
       if (!event) throw new NotFoundException('order has no event');
