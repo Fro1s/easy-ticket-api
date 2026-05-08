@@ -53,7 +53,7 @@ export class AbacatePayProvider implements PaymentsProvider {
         this.config.get<string>('WEB_BASE_URL') ?? 'http://localhost:3000';
       const successUrl =
         input.successUrl ??
-        `${webBaseUrl}/checkout/sucesso?o=${input.orderId}`;
+        `${webBaseUrl}/checkout/sucesso/${input.orderId}`;
       const cancelUrl =
         input.cancelUrl ?? `${webBaseUrl}/checkout/${input.orderId}`;
       const r = await this.client.createCardCheckout({

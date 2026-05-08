@@ -127,6 +127,25 @@ export class AuthService {
     return this.buildAuthResponse(updated);
   }
 
+  async refresh(refreshToken: string): Promise<AuthResponse> {
+    let payload: { sub: string; type: string };
+    try {
+      payload = await this.jwt.verifyAsync(refreshToken, {
+        secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException('invalid refresh token');
+    }
+    if (payload.type !== 'refresh') {
+      throw new UnauthorizedException('invalid token type');
+    }
+    const user = await this.users.findById(payload.sub);
+    if (!user) {
+      throw new UnauthorizedException('user not found');
+    }
+    return this.buildAuthResponse(user);
+  }
+
   private async buildAuthResponse(user: {
     id: string;
     email: string;

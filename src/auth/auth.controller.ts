@@ -5,6 +5,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { MagicLinkDto } from './dto/magic-link.dto';
 import { ClaimDto, ConsumeMagicLinkDto } from './dto/claim.dto';
+import { RefreshDto } from './dto/refresh.dto';
 import { AuthResponse, MagicLinkResponse } from './dto/auth.response';
 
 @ApiTags('auth')
@@ -40,6 +41,13 @@ export class AuthController {
   @ApiResponse({ status: 200, type: AuthResponse })
   consumeMagicLink(@Body() dto: ConsumeMagicLinkDto): Promise<AuthResponse> {
     return this.auth.consumeMagicLink(dto);
+  }
+
+  @Post('refresh')
+  @ApiOperation({ summary: 'Exchange a refresh token for a new session' })
+  @ApiResponse({ status: 200, type: AuthResponse })
+  refresh(@Body() dto: RefreshDto): Promise<AuthResponse> {
+    return this.auth.refresh(dto.refreshToken);
   }
 
   @Post('claim')

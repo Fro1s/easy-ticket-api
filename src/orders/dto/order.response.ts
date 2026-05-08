@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { PaymentMethod } from '../../common/enums/payment-method.enum';
+import { PaymentProvider } from '../../common/enums/payment-provider.enum';
 
 export class OrderEventResponse {
   @ApiProperty() id: string;
@@ -13,6 +14,7 @@ export class OrderEventResponse {
   @ApiProperty() venueName: string;
   @ApiProperty() venueCity: string;
   @ApiProperty() venueState: string;
+  @ApiProperty({ enum: PaymentProvider }) paymentProvider: PaymentProvider;
 }
 
 export class OrderItemResponse {

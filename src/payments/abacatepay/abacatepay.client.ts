@@ -1,24 +1,20 @@
 /**
- * AbacatePayClient — thin NestJS wrapper around abacatepay-nodejs-sdk@1.6.0.
+ * AbacatePayClient — direct v2 API integration via fetch.
  *
- * SDK shape relied upon:
- *   - Factory: `AbacatePay(apiKey: string)` → returns object (not a class).
- *   - PIX:  sdk.pixQrCode.create({ amount, expiresIn, description, customer? })
- *             → { error: string | null, data: IPixQrCode | null }
- *             IPixQrCode: { id, brCode, brCodeBase64, status, expiresAt, ... }
- *   - Card: sdk.billing.create({ frequency:'ONE_TIME', methods:['CARD'],
- *             products:[{ externalId, name, quantity:1, price, description }],
- *             returnUrl, completionUrl, customer })
- *             → { error: string | null, data: IBilling | null }
- *             IBilling: { id, url (redirect), status, ... }
+ * NOTE: Replaces the abacatepay-nodejs-sdk@1.6.0 (v1-only) usage. The dev keys
+ * issued today are v2 keys; v1 endpoints reject them with "API key version
+ * mismatch". v2 requires:
+ *   - PIX: POST /v2/transparents/create  body { method:'PIX', data:{ amount, ... } }
+ *   - CARD: two-step. First POST /v2/products/create to register a one-shot
+ *     product, then POST /v2/checkouts/create with items:[{id, quantity}].
  *
- * IMPORTANT: pixQrCode.create has no externalId field — callers must persist
- * the returned charge id → orderId mapping themselves (e.g. on the Order row).
+ * Webhook charge IDs returned at create time match what the panel sends back:
+ *   - transparents.* event → data.transparent.id
+ *   - checkouts.*   event → data.checkout.id
  */
 
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import AbacatePay from 'abacatepay-nodejs-sdk';
 import {
   AbacateChargeStatus,
   CardCheckoutRequest,
@@ -27,11 +23,34 @@ import {
   PixChargeResponse,
 } from './abacatepay.types';
 
-type SdkInstance = ReturnType<typeof AbacatePay>;
+const BASE_URL = 'https://api.abacatepay.com/v2';
 
-/** Maps SDK billing/pix statuses to our unified AbacateChargeStatus. */
-function normalizeStatus(raw: string): AbacateChargeStatus {
-  const upper = raw.toUpperCase();
+interface ApiEnvelope<T> {
+  success?: boolean;
+  data: T | null;
+  error: string | null;
+}
+
+interface ApiPixData {
+  id: string;
+  brCode: string;
+  brCodeBase64?: string;
+  status: string;
+  expiresAt: string;
+}
+
+interface ApiProductData {
+  id: string;
+}
+
+interface ApiCheckoutData {
+  id: string;
+  url: string;
+  status: string;
+}
+
+function normalizeStatus(raw: string | undefined): AbacateChargeStatus {
+  const upper = (raw ?? '').toUpperCase();
   const known: AbacateChargeStatus[] = [
     'PENDING',
     'PAID',
@@ -42,21 +61,18 @@ function normalizeStatus(raw: string): AbacateChargeStatus {
   ];
   return known.includes(upper as AbacateChargeStatus)
     ? (upper as AbacateChargeStatus)
-    : 'FAILED';
+    : 'PENDING';
 }
 
 @Injectable()
 export class AbacatePayClient {
   private readonly logger = new Logger(AbacatePayClient.name);
-  private readonly sdk: SdkInstance | null;
+  private readonly apiKey: string | null;
 
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('ABACATEPAY_API_KEY')?.trim();
-
-    if (apiKey) {
-      this.sdk = AbacatePay(apiKey);
-    } else {
-      this.sdk = null;
+    this.apiKey = apiKey || null;
+    if (!this.apiKey) {
       this.logger.warn(
         'ABACATEPAY_API_KEY is not set — AbacatePayClient will reject all requests',
       );
@@ -64,119 +80,79 @@ export class AbacatePayClient {
   }
 
   // -------------------------------------------------------------------------
-  // PIX
+  // PIX — /v2/transparents/create
   // -------------------------------------------------------------------------
 
   async createPixCharge(req: PixChargeRequest): Promise<PixChargeResponse> {
     this.assertConfigured();
-
     this.logger.log(
       `Creating PIX charge: externalId=${req.externalId} amount=${req.amount}`,
     );
 
-    let response: Awaited<ReturnType<SdkInstance['pixQrCode']['create']>>;
+    const customerObj =
+      req.customer.name && req.customer.taxId
+        ? {
+            name: req.customer.name,
+            taxId: req.customer.taxId,
+            email: req.customer.email,
+            cellphone: req.customer.cellphone,
+          }
+        : undefined;
 
-    try {
-      response = await this.sdk!.pixQrCode.create({
+    const body = {
+      method: 'PIX',
+      data: {
         amount: req.amount,
         expiresIn: req.expiresIn,
         description: req.description,
-        customer: req.customer.email
-          ? {
-              email: req.customer.email,
-              name: req.customer.name,
-              cellphone: req.customer.cellphone,
-              taxId: req.customer.taxId,
-            }
-          : undefined,
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `AbacatePay PIX SDK threw for externalId=${req.externalId}: ${msg}`,
-      );
-      throw new BadRequestException(`AbacatePay PIX error: ${msg}`);
-    }
+        externalId: req.externalId,
+        ...(customerObj ? { customer: customerObj } : {}),
+      },
+    };
 
-    if (response.error) {
-      this.logger.warn(
-        `AbacatePay PIX API error for externalId=${req.externalId}: ${response.error}`,
-      );
-      throw new BadRequestException(`AbacatePay PIX error: ${response.error}`);
-    }
-
-    // After the guard above, TS knows we're in the `{ error: null; data: IPixQrCode }` branch.
-    const pix = (response as Extract<typeof response, { error: null }>).data;
-
+    const r = await this.call<ApiPixData>('/transparents/create', body);
     return {
-      id: pix.id,
-      brCode: pix.brCode,
-      brCodeBase64: pix.brCodeBase64,
-      status: normalizeStatus(pix.status),
-      expiresAt: pix.expiresAt,
+      id: r.id,
+      brCode: r.brCode,
+      brCodeBase64: r.brCodeBase64,
+      status: normalizeStatus(r.status),
+      expiresAt: r.expiresAt,
     };
   }
 
   // -------------------------------------------------------------------------
-  // Card (hosted checkout via billing.create)
+  // Card — /v2/products/create + /v2/checkouts/create
   // -------------------------------------------------------------------------
 
   async createCardCheckout(
     req: CardCheckoutRequest,
   ): Promise<CardCheckoutResponse> {
     this.assertConfigured();
-
     this.logger.log(
       `Creating card checkout: externalId=${req.externalId} amount=${req.amount}`,
     );
 
-    let response: Awaited<ReturnType<SdkInstance['billing']['create']>>;
+    // v2 /checkouts/create requires `items: [{id, quantity}]` referring to
+    // products. Create a one-shot product per order.
+    const product = await this.call<ApiProductData>('/products/create', {
+      externalId: req.externalId,
+      name: req.description,
+      price: req.amount,
+      currency: 'BRL',
+    });
 
-    try {
-      response = await this.sdk!.billing.create({
-        frequency: 'ONE_TIME',
-        methods: ['CARD'],
-        products: [
-          {
-            externalId: req.externalId,
-            name: req.description,
-            quantity: 1,
-            price: req.amount,
-            description: req.description,
-          },
-        ],
-        returnUrl: req.returnUrl,
-        completionUrl: req.completionUrl ?? req.returnUrl,
-        customer: {
-          email: req.customer.email,
-          name: req.customer.name,
-          cellphone: req.customer.cellphone,
-          taxId: req.customer.taxId,
-        },
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `AbacatePay card SDK threw for externalId=${req.externalId}: ${msg}`,
-      );
-      throw new BadRequestException(`AbacatePay card error: ${msg}`);
-    }
-
-    if (response.error) {
-      this.logger.warn(
-        `AbacatePay card API error for externalId=${req.externalId}: ${response.error}`,
-      );
-      throw new BadRequestException(
-        `AbacatePay card error: ${response.error}`,
-      );
-    }
-
-    const billing = response.data!;
+    const checkout = await this.call<ApiCheckoutData>('/checkouts/create', {
+      items: [{ id: product.id, quantity: 1 }],
+      methods: ['CARD'],
+      returnUrl: req.returnUrl,
+      completionUrl: req.completionUrl ?? req.returnUrl,
+      externalId: req.externalId,
+    });
 
     return {
-      id: billing.id,
-      redirectUrl: billing.url,
-      status: normalizeStatus(billing.status),
+      id: checkout.id,
+      redirectUrl: checkout.url,
+      status: normalizeStatus(checkout.status),
     };
   }
 
@@ -184,8 +160,44 @@ export class AbacatePayClient {
   // Helpers
   // -------------------------------------------------------------------------
 
+  private async call<T>(path: string, body: unknown): Promise<T> {
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey!}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'easy-ticket/1.0',
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`AbacatePay v2 fetch error on ${path}: ${msg}`);
+      throw new BadRequestException(`AbacatePay error: ${msg}`);
+    }
+
+    let env: ApiEnvelope<T>;
+    try {
+      env = (await response.json()) as ApiEnvelope<T>;
+    } catch {
+      throw new BadRequestException(
+        `AbacatePay returned non-JSON (status=${response.status})`,
+      );
+    }
+
+    if (!response.ok || env.error || !env.data) {
+      const msg = env.error || `HTTP ${response.status}`;
+      this.logger.warn(`AbacatePay v2 ${path} failed: ${msg}`);
+      throw new BadRequestException(`AbacatePay error: ${msg}`);
+    }
+
+    return env.data;
+  }
+
   private assertConfigured(): void {
-    if (!this.sdk) {
+    if (!this.apiKey) {
       throw new BadRequestException(
         'AbacatePay is not configured (missing ABACATEPAY_API_KEY)',
       );

@@ -313,11 +313,10 @@ export class SellByEmailService {
     }
 
     let pixCopyPaste: string | null = null;
-    if (
-      txResult.status === OrderStatus.PENDING &&
-      event.paymentProvider === PaymentProvider.MANUAL_PIX &&
-      event.pixKey
-    ) {
+    // Sell-by-email always uses static PIX BR-Code if the event has one configured,
+    // regardless of the public-buyer paymentProvider (so events on Abacate can still
+    // close vendor-driven sales offline via manual PIX).
+    if (txResult.status === OrderStatus.PENDING && event.pixKey) {
       try {
         pixCopyPaste = buildPixBrCode({
           key: event.pixKey,

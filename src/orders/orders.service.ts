@@ -619,6 +619,7 @@ export class OrdersService {
         venueName: event.venue?.name ?? '',
         venueCity: event.venue?.city ?? '',
         venueState: event.venue?.state ?? '',
+        paymentProvider: event.paymentProvider,
       },
       items,
       payment,
