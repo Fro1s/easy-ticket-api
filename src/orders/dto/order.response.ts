@@ -35,7 +35,7 @@ export class OrderPaymentInfo {
   @ApiProperty() expiresAt: string;
   /** Server-derived: cents discounted from total when paying via Pix. */
   @ApiProperty() pixDiscountCents: number;
-  @ApiProperty({ nullable: true, description: 'Redirect URL for hosted-checkout flows (card via AbacatePay). Null for inline PIX.' })
+  @ApiProperty({ nullable: true, type: String, description: 'Redirect URL for hosted-checkout flows (card via AbacatePay). Null for inline PIX.' })
   redirectUrl!: string | null;
 }
 
