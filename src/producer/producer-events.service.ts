@@ -469,6 +469,7 @@ export class ProducerEventsService {
     });
     const byId = new Map(hydrated.map((o) => [o.id, o]));
 
+    const isStaff = currentUser.role === Role.STAFF;
     const items: ProducerOrderItem[] = ids
       .map((id) => byId.get(id))
       .filter((o): o is Order => !!o)
@@ -479,9 +480,9 @@ export class ProducerEventsService {
         buyerEmail: o.user.email,
         buyerName: o.user.name,
         qty: o.items.reduce((s, i) => s + i.qty, 0),
-        subtotalCents: o.subtotalCents,
-        feeCents: o.feeCents,
-        totalCents: o.totalCents,
+        subtotalCents: isStaff ? 0 : o.subtotalCents,
+        feeCents: isStaff ? 0 : o.feeCents,
+        totalCents: isStaff ? 0 : o.totalCents,
         paymentMethod: o.paymentMethod,
         createdAt: o.createdAt.toISOString(),
         paidAt: o.paidAt ? o.paidAt.toISOString() : null,

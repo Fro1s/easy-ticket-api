@@ -127,7 +127,7 @@ export class ProducerController {
   }
 
   @Get('events/:slug/orders')
-  @Roles(Role.PRODUCER, Role.ADMIN)
+  @Roles(Role.PRODUCER, Role.ADMIN, Role.STAFF)
   @ApiOperation({
     summary: 'List orders for an event (filterable + paginated)',
   })
