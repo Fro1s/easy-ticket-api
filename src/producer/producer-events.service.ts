@@ -206,17 +206,18 @@ export class ProducerEventsService {
     );
     const netCents = grossRevenueCents - platformFeeCents;
 
-    let pendingManualOrdersCount = 0;
-    if (event.paymentProvider === PaymentProvider.MANUAL_PIX) {
-      pendingManualOrdersCount = await this.orders
-        .createQueryBuilder('o')
-        .innerJoin('o.items', 'oi')
-        .innerJoin('oi.sector', 's')
-        .where('s.eventId = :eventId', { eventId: event.id })
-        .andWhere('o.status = :status', { status: OrderStatus.PENDING })
-        .andWhere('o.reservedUntil > NOW()')
-        .getCount();
-    }
+    // Conta pedidos PENDING sem charge no gateway (origem manual/sell-by-email),
+    // independente do paymentProvider do evento. Eventos em Abacate ainda podem
+    // ter vendas manuais via vendedor.
+    const pendingManualOrdersCount = await this.orders
+      .createQueryBuilder('o')
+      .innerJoin('o.items', 'oi')
+      .innerJoin('oi.sector', 's')
+      .where('s.eventId = :eventId', { eventId: event.id })
+      .andWhere('o.status = :status', { status: OrderStatus.PENDING })
+      .andWhere('o.reservedUntil > NOW()')
+      .andWhere('o.paymentId IS NULL')
+      .getCount();
     return {
       ticketsSold,
       grossRevenueCents,
@@ -485,9 +486,10 @@ export class ProducerEventsService {
         createdAt: o.createdAt.toISOString(),
         paidAt: o.paidAt ? o.paidAt.toISOString() : null,
         reservedUntil: o.reservedUntil.toISOString(),
-        isManualPending:
-          o.status === OrderStatus.PENDING &&
-          detail.paymentProvider === PaymentProvider.MANUAL_PIX,
+        // Mostra "confirmar pagamento" para qualquer pedido PENDING sem charge
+        // no gateway — cobre tanto eventos MANUAL_PIX quanto Abacate com vendas
+        // por vendedor (que são sempre offline/manual).
+        isManualPending: o.status === OrderStatus.PENDING && !o.paymentId,
       }));
 
     return { items, total: totalCount, page, pageSize };

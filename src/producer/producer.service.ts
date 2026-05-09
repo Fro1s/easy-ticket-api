@@ -54,9 +54,12 @@ export class ProducerService {
       const event = order.items[0]?.sector?.event;
       if (!event) throw new NotFoundException('order has no event');
 
-      if (event.paymentProvider !== PaymentProvider.MANUAL_PIX) {
+      // Manual confirmation aplica a pedidos sem charge no gateway (origem
+      // sell-by-email). Se a order já tem paymentId (Abacate), o seller não
+      // deve confirmar manualmente — o gateway é quem fecha via webhook.
+      if (order.paymentId) {
         throw new BadRequestException(
-          'event is not configured for manual PIX',
+          'this order is processed by the payment gateway and cannot be manually confirmed',
         );
       }
 
