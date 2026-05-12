@@ -54,10 +54,15 @@ export class ProducerService {
       const event = order.items[0]?.sector?.event;
       if (!event) throw new NotFoundException('order has no event');
 
-      // Manual confirmation aplica a pedidos sem charge no gateway (origem
-      // sell-by-email). Se a order já tem paymentId (Abacate), o seller não
-      // deve confirmar manualmente — o gateway é quem fecha via webhook.
-      if (order.paymentId) {
+      // Manual confirmation aplica a pedidos sem charge no gateway. paymentId
+      // prefixado com `sbm:` é chave de idempotência da venda por email, e
+      // `manual_` é marca de confirmação manual anterior — nenhum dos dois
+      // indica charge no gateway, então não devem bloquear esta confirmação.
+      const isGatewayCharge =
+        !!order.paymentId &&
+        !order.paymentId.startsWith('sbm:') &&
+        !order.paymentId.startsWith('manual_');
+      if (isGatewayCharge) {
         throw new BadRequestException(
           'this order is processed by the payment gateway and cannot be manually confirmed',
         );
