@@ -2,6 +2,7 @@ export interface BatchSnapshot {
   id: string;
   name: string;
   priceCents: number;
+  ticketsPerUnit: number;
   capacity: number;
   sold: number;
   reserved: number;

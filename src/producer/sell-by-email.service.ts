@@ -27,6 +27,7 @@ import { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { SellByEmailDto, SellByEmailResponse } from './dto/sell-by-email.dto';
 import { PaymentProvider } from '../common/enums/payment-provider.enum';
 import { buildPixBrCode } from '../payments/lib/build-pix-brcode';
+import { validateAttendees } from '../orders/lib/validate-attendees';
 
 const RESERVATION_TTL_MS = 10 * 60_000;
 const CLAIM_TOKEN_TTL_MS = 24 * 60 * 60_000;
@@ -51,6 +52,8 @@ interface TxResult {
     shortCode: string;
     sectorName: string;
     qrToken: string;
+    holderName: string | null;
+    holderEmail: string | null;
   }>;
 }
 
@@ -156,6 +159,7 @@ export class SellByEmailService {
           id: b.id,
           name: b.name,
           priceCents: b.priceCents,
+          ticketsPerUnit: b.ticketsPerUnit ?? 1,
           capacity: b.capacity,
           sold: b.sold,
           reserved: b.reserved,
@@ -185,6 +189,16 @@ export class SellByEmailService {
         );
       }
 
+      const attendees = dto.attendees?.map((a) => ({
+        name: a.name.trim(),
+        email: a.email?.trim().toLowerCase() || null,
+      })) ?? null;
+      validateAttendees({
+        qty: dto.qty,
+        ticketsPerUnit: batch.ticketsPerUnit,
+        attendees,
+      });
+
       batch.reserved += dto.qty;
       sector.reserved += dto.qty;
       const subtotalCents = batch.priceCents * dto.qty;
@@ -213,6 +227,7 @@ export class SellByEmailService {
       item.batchId = batch.id;
       item.qty = dto.qty;
       item.priceCents = batch.priceCents;
+      item.attendees = attendees;
       order.items = [item];
       await mgr.getRepository(Order).save(order);
 
@@ -236,6 +251,8 @@ export class SellByEmailService {
           shortCode: t.shortCode,
           sectorName: sector.name,
           qrToken: t.qrToken,
+          holderName: t.holderName,
+          holderEmail: t.holderEmail,
         }));
       }
 
@@ -270,30 +287,46 @@ export class SellByEmailService {
 
     let emailSent = false;
     if (txResult.ticketsForEmail.length > 0) {
-      const ticketsWithQr = await Promise.all(
-        txResult.ticketsForEmail.map(async (t) => ({
-          shortCode: t.shortCode,
-          sectorName: t.sectorName,
-          qrPngBase64: await renderQrPngBase64(t.qrToken),
-        })),
-      );
-      try {
-        await this.emails.sendTicketByEmail({
-          to: txResult.buyerEmail,
-          buyerFirstName: txResult.buyerFirstName,
-          eventTitle: txResult.eventTitle,
-          eventArtist: txResult.eventArtist,
-          eventStartsAt: txResult.eventStartsAt,
-          venueName: txResult.venueName,
-          venueCity: txResult.venueCity,
-          tickets: ticketsWithQr,
-          claimUrl: claimUrl ?? undefined,
-        });
-        emailSent = true;
-      } catch (err) {
-        this.logger.warn(
-          `sell-by-email: ticket email failed for ${txResult.buyerEmail}: ${(err as Error).message}`,
+      const buyerEmailLower = txResult.buyerEmail.toLowerCase();
+      const grouped: Record<string, typeof txResult.ticketsForEmail> = {};
+      for (const t of txResult.ticketsForEmail) {
+        const dest =
+          t.holderEmail && t.holderEmail.toLowerCase() !== buyerEmailLower
+            ? t.holderEmail.toLowerCase()
+            : buyerEmailLower;
+        (grouped[dest] ||= []).push(t);
+      }
+
+      for (const [destEmail, group] of Object.entries(grouped)) {
+        const ticketsWithQr = await Promise.all(
+          group.map(async (t) => ({
+            shortCode: t.shortCode,
+            sectorName: t.sectorName,
+            qrPngBase64: await renderQrPngBase64(t.qrToken),
+          })),
         );
+        const firstName =
+          destEmail === buyerEmailLower
+            ? txResult.buyerFirstName
+            : (group[0]?.holderName?.split(/\s+/)[0] ?? null);
+        try {
+          await this.emails.sendTicketByEmail({
+            to: destEmail,
+            buyerFirstName: firstName,
+            eventTitle: txResult.eventTitle,
+            eventArtist: txResult.eventArtist,
+            eventStartsAt: txResult.eventStartsAt,
+            venueName: txResult.venueName,
+            venueCity: txResult.venueCity,
+            tickets: ticketsWithQr,
+            claimUrl: destEmail === buyerEmailLower ? (claimUrl ?? undefined) : undefined,
+          });
+          emailSent = true;
+        } catch (err) {
+          this.logger.warn(
+            `sell-by-email: ticket email failed for ${destEmail}: ${(err as Error).message}`,
+          );
+        }
       }
     } else if (claimUrl) {
       // Order is PENDING (no tickets emitted yet) but the buyer is a ghost user

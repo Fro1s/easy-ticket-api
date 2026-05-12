@@ -41,4 +41,7 @@ export class OrderItem {
 
   @Column('int')
   priceCents: number;
+
+  @Column('jsonb', { nullable: true })
+  attendees: Array<{ name: string; email: string | null }> | null;
 }

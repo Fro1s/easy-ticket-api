@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -18,6 +19,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CheckoutOrderDto } from './dto/checkout-order.dto';
+import { UpdateOrderAttendeesDto } from './dto/attendee.dto';
 import {
   ConfirmedOrderResponse,
   OrderResponse,
@@ -55,6 +57,20 @@ export class OrdersController {
     @Param('id') id: string,
   ): Promise<OrderResponse> {
     return this.orders.findOne(req.user.id, id);
+  }
+
+  @Patch(':id/attendees')
+  @ApiOperation({
+    summary:
+      'Set holder name/email for each ticket in combo items before checkout',
+  })
+  @ApiResponse({ status: 200, type: OrderResponse })
+  updateAttendees(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderAttendeesDto,
+  ): Promise<OrderResponse> {
+    return this.orders.updateAttendees(req.user.id, id, dto);
   }
 
   @Post(':id/checkout')

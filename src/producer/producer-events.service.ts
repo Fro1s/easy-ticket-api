@@ -194,6 +194,7 @@ export class ProducerEventsService {
               id: b.id,
               name: b.name,
               priceCents: b.priceCents,
+              ticketsPerUnit: b.ticketsPerUnit ?? 1,
               capacity: b.capacity,
               sold: soldByBatch.get(b.id) ?? 0,
               reserved: b.reserved,
@@ -224,7 +225,8 @@ export class ProducerEventsService {
       .createQueryBuilder('oi')
       .innerJoin('oi.order', 'o')
       .innerJoin('oi.sector', 's')
-      .select('COALESCE(SUM(oi.qty), 0)', 'qty')
+      .innerJoin('oi.batch', 'b')
+      .select('COALESCE(SUM(oi.qty * b.ticketsPerUnit), 0)', 'qty')
       .addSelect('COALESCE(SUM(oi.priceCents * oi.qty), 0)', 'gross')
       .where('s.eventId = :eventId', { eventId: event.id })
       .andWhere('o.status = :paid', { paid: OrderStatus.PAID })
@@ -445,15 +447,10 @@ export class ProducerEventsService {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
 
-    // Volunteers (PRODUCER que não é a Letícia) não veem orders CANCELLED/EXPIRED
-    // — lista ficou poluída pra quem opera no dia-a-dia. Admin e Letícia veem
-    // tudo. Email da Letícia é hard-coded por enquanto; quando houver permissão
-    // granular, trocar por uma flag/role.
-    const canSeeAllStatuses =
-      currentUser.role === Role.ADMIN ||
-      currentUser.email?.toLowerCase() ===
-        'leticia.silveira@projetocriancafeliz.org';
-    const hideStatuses = canSeeAllStatuses
+    // Na aba "Todos" (sem filtro de status), escondemos CANCELLED/EXPIRED pra
+    // limpar a lista — todo mundo continua vendo se filtrar explicitamente por
+    // cada um desses status.
+    const hideStatuses = query.status
       ? []
       : [OrderStatus.CANCELLED, OrderStatus.EXPIRED];
 

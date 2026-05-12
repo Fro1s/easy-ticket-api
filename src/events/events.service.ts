@@ -19,6 +19,7 @@ function toBatchSnapshot(b: Batch): BatchSnapshot {
     id: b.id,
     name: b.name,
     priceCents: b.priceCents,
+    ticketsPerUnit: b.ticketsPerUnit ?? 1,
     capacity: b.capacity,
     sold: b.sold,
     reserved: b.reserved,
@@ -193,6 +194,7 @@ export class EventsService {
                   id: active.id,
                   name: active.name,
                   priceCents: active.priceCents,
+                  ticketsPerUnit: active.ticketsPerUnit ?? 1,
                   startsAt: active.startsAt?.toISOString() ?? null,
                   endsAt: active.endsAt?.toISOString() ?? null,
                 }
@@ -202,6 +204,7 @@ export class EventsService {
                   id: next.id,
                   name: next.name,
                   priceCents: next.priceCents,
+                  ticketsPerUnit: next.ticketsPerUnit ?? 1,
                   startsAt: next.startsAt?.toISOString() ?? null,
                   endsAt: next.endsAt?.toISOString() ?? null,
                 }

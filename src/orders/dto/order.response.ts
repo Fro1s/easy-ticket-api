@@ -24,6 +24,19 @@ export class OrderItemResponse {
   @ApiProperty() sectorColorHex: string;
   @ApiProperty() qty: number;
   @ApiProperty() priceCents: number;
+  @ApiProperty() ticketsPerUnit: number;
+  @ApiProperty({
+    type: 'array',
+    nullable: true,
+    items: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        email: { type: 'string', nullable: true },
+      },
+    },
+  })
+  attendees: Array<{ name: string; email: string | null }> | null;
 }
 
 export class OrderPaymentInfo {

@@ -15,6 +15,7 @@ export class ProducerEventBatchSummary {
   @ApiProperty() id: string;
   @ApiProperty() name: string;
   @ApiProperty() priceCents: number;
+  @ApiProperty() ticketsPerUnit: number;
   @ApiProperty() capacity: number;
   @ApiProperty() sold: number;
   @ApiProperty() reserved: number;

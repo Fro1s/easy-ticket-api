@@ -43,6 +43,9 @@ export class Batch {
   @Column('boolean', { default: false })
   producerOnly: boolean;
 
+  @Column('int', { default: 1 })
+  ticketsPerUnit: number;
+
   @Column('timestamptz', { nullable: true })
   startsAt: Date | null;
 

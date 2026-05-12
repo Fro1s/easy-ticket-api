@@ -54,6 +54,12 @@ export class Ticket {
   @Column('varchar', { length: 32, nullable: true })
   transferredToUserId: string | null;
 
+  @Column('varchar', { length: 120, nullable: true })
+  holderName: string | null;
+
+  @Column('varchar', { length: 180, nullable: true })
+  holderEmail: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

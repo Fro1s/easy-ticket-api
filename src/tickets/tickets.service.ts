@@ -23,6 +23,7 @@ export class TicketsService {
       .select([
         't.shortCode AS t_short',
         't.status AS t_status',
+        't.holderName AS t_holder',
         'u.name AS u_name',
         'e.slug AS e_slug',
         'e.title AS e_title',
@@ -41,7 +42,7 @@ export class TicketsService {
 
     if (!row) throw new NotFoundException('ticket not found');
 
-    const fullName: string = row.u_name ?? '';
+    const fullName: string = row.t_holder ?? row.u_name ?? '';
     const holderFirstName = fullName.trim().split(/\s+/)[0] ?? '';
 
     return {

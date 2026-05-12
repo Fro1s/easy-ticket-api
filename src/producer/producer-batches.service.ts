@@ -48,6 +48,7 @@ export class ProducerBatchesService {
       priceCents: b.priceCents, capacity: b.capacity,
       sold: b.sold, reserved: b.reserved, sortOrder: b.sortOrder,
       producerOnly: b.producerOnly,
+      ticketsPerUnit: b.ticketsPerUnit ?? 1,
       startsAt: b.startsAt?.toISOString() ?? null,
       endsAt: b.endsAt?.toISOString() ?? null,
     };
@@ -75,6 +76,7 @@ export class ProducerBatchesService {
       capacity: dto.capacity,
       sortOrder: dto.sortOrder,
       producerOnly: dto.producerOnly ?? false,
+      ticketsPerUnit: dto.ticketsPerUnit ?? 1,
       startsAt: dto.startsAt ? new Date(dto.startsAt) : null,
       endsAt: dto.endsAt ? new Date(dto.endsAt) : null,
     });
@@ -94,6 +96,7 @@ export class ProducerBatchesService {
     if (dto.priceCents !== undefined) batch.priceCents = dto.priceCents;
     if (dto.sortOrder !== undefined) batch.sortOrder = dto.sortOrder;
     if (dto.producerOnly !== undefined) batch.producerOnly = dto.producerOnly;
+    if (dto.ticketsPerUnit !== undefined) batch.ticketsPerUnit = dto.ticketsPerUnit;
     if (dto.startsAt !== undefined) {
       batch.startsAt = dto.startsAt === null ? null : new Date(dto.startsAt);
     }

@@ -1,5 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsBoolean,
   IsEmail,
   IsInt,
@@ -8,7 +9,10 @@ import {
   Length,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { AttendeeDto } from '../../orders/dto/attendee.dto';
 
 export class SellByEmailDto {
   @ApiProperty({ example: 'maria.silva@gmail.com' })
@@ -47,6 +51,17 @@ export class SellByEmailDto {
   @IsOptional()
   @IsBoolean()
   markPaid?: boolean;
+
+  @ApiPropertyOptional({
+    type: [AttendeeDto],
+    description:
+      'Required when batch is a combo (ticketsPerUnit > 1). One entry per emitted ticket (qty × ticketsPerUnit).',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AttendeeDto)
+  attendees?: AttendeeDto[];
 }
 
 export class SellByEmailResponse {

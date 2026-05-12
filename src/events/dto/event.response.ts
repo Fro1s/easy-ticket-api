@@ -6,6 +6,7 @@ export class EventBatchInfo {
   @ApiProperty() id: string;
   @ApiProperty() name: string;
   @ApiProperty() priceCents: number;
+  @ApiProperty() ticketsPerUnit: number;
   @ApiProperty({ nullable: true, type: String }) startsAt: string | null;
   @ApiProperty({ nullable: true, type: String }) endsAt: string | null;
 }

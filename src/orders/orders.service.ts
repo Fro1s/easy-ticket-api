@@ -9,7 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, LessThan } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan } from 'typeorm';
 import { createId } from '@paralleldrive/cuid2';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
@@ -20,6 +20,8 @@ import { Event } from '../events/entities/event.entity';
 import { Ticket } from '../tickets/entities/ticket.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CheckoutOrderDto } from './dto/checkout-order.dto';
+import { UpdateOrderAttendeesDto } from './dto/attendee.dto';
+import { validateAttendees } from './lib/validate-attendees';
 import {
   ConfirmedOrderResponse,
   OrderResponse,
@@ -148,6 +150,7 @@ export class OrdersService {
             id: b.id,
             name: b.name,
             priceCents: b.priceCents,
+            ticketsPerUnit: b.ticketsPerUnit ?? 1,
             capacity: b.capacity,
             sold: b.sold,
             reserved: b.reserved,
@@ -227,6 +230,56 @@ export class OrdersService {
     return this.serialize(order, event, sectors);
   }
 
+  async updateAttendees(
+    userId: string,
+    orderId: string,
+    dto: UpdateOrderAttendeesDto,
+  ): Promise<OrderResponse> {
+    return this.dataSource.transaction(async (mgr) => {
+      const order = await mgr.getRepository(Order).findOne({
+        where: { id: orderId },
+        relations: { items: { sector: { event: { venue: true } } } },
+      });
+      if (!order) throw new NotFoundException('order not found');
+      if (order.userId !== userId) throw new ForbiddenException();
+      if (order.status !== OrderStatus.PENDING) {
+        throw new BadRequestException('order is not pending');
+      }
+
+      const batches = await mgr.getRepository(Batch).find({
+        where: { id: In(order.items.map((i) => i.batchId)) },
+      });
+      const byBatchId = new Map(batches.map((b) => [b.id, b]));
+      const dtoByItemId = new Map(
+        dto.items.map((i) => [i.orderItemId, i.attendees]),
+      );
+
+      for (const item of order.items) {
+        const incoming = dtoByItemId.get(item.id);
+        if (!incoming) continue;
+        const batch = byBatchId.get(item.batchId);
+        if (!batch) {
+          throw new BadRequestException(`batch not found for item ${item.id}`);
+        }
+        const normalized = incoming.map((a) => ({
+          name: a.name.trim(),
+          email: a.email?.trim().toLowerCase() || null,
+        }));
+        validateAttendees({
+          qty: item.qty,
+          ticketsPerUnit: batch.ticketsPerUnit,
+          attendees: normalized,
+        });
+        item.attendees = normalized;
+        await mgr.getRepository(OrderItem).save(item);
+      }
+
+      const event = order.items[0]!.sector!.event!;
+      const sectors = order.items.map((it) => it.sector!).filter(Boolean);
+      return this.serialize(order, event, sectors);
+    });
+  }
+
   async checkout(
     userId: string,
     orderId: string,
@@ -250,6 +303,20 @@ export class OrdersService {
     if (!user) throw new NotFoundException('user not found');
 
     const event = order.items[0]!.sector!.event!;
+
+    const checkoutBatches = await this.dataSource
+      .getRepository(Batch)
+      .find({ where: { id: In(order.items.map((i) => i.batchId)) } });
+    const batchById = new Map(checkoutBatches.map((b) => [b.id, b]));
+    for (const item of order.items) {
+      const batch = batchById.get(item.batchId)!;
+      validateAttendees({
+        qty: item.qty,
+        ticketsPerUnit: batch.ticketsPerUnit,
+        attendees: item.attendees ?? null,
+      });
+    }
+
     const provider = this.paymentsRegistry.resolve(event.paymentProvider);
 
     const feeCfg = {
@@ -426,7 +493,8 @@ export class OrdersService {
       batch.reserved = Math.max(0, batch.reserved - item.qty);
       batch.sold += item.qty;
 
-      for (let i = 0; i < item.qty; i++) {
+      const ticketsForItem = item.qty * (batch.ticketsPerUnit || 1);
+      for (let i = 0; i < ticketsForItem; i++) {
         const t = new Ticket();
         t.id = createId();
         t.shortCode = `ET-${createId().slice(0, 9).toUpperCase()}`;
@@ -436,6 +504,9 @@ export class OrdersService {
         t.eventId = sector.eventId;
         t.sectorId = sector.id;
         t.status = TicketStatus.VALID;
+        const attendee = item.attendees?.[i];
+        t.holderName = attendee?.name ?? null;
+        t.holderEmail = attendee?.email ?? null;
         tickets.push(t);
       }
     }
@@ -460,32 +531,58 @@ export class OrdersService {
     if (opts.sendEmail) {
       const buyer = await this.users.findById(order.userId);
       if (buyer?.email) {
-        const ticketsForEmail = await Promise.all(
-          tickets.map(async (t) => {
-            const sector = bySectorId.get(t.sectorId)!;
-            return {
-              shortCode: t.shortCode,
-              sectorName: sector.name,
-              qrPngBase64: await renderQrPngBase64(t.qrToken),
-            };
-          }),
-        );
+        const buyerEmailLower = buyer.email.toLowerCase();
         const firstName = buyer.name ? buyer.name.trim().split(/\s+/)[0] : null;
-        try {
-          await this.emails.sendTicketPurchased({
-            to: buyer.email,
-            buyerFirstName: firstName ?? null,
-            eventTitle: event.title,
-            eventArtist: event.artist,
-            eventStartsAt: event.startsAt,
-            venueName: event.venue?.name ?? '',
-            venueCity: event.venue?.city ?? '',
-            tickets: ticketsForEmail,
-          });
-        } catch (err) {
-          this.logger.warn(
-            `markOrderPaid: ticket email failed for ${buyer.email}: ${(err as Error).message}`,
+
+        const ticketsByDest: Record<string, Ticket[]> = {};
+        for (const t of tickets) {
+          const dest =
+            t.holderEmail && t.holderEmail.toLowerCase() !== buyerEmailLower
+              ? t.holderEmail.toLowerCase()
+              : buyerEmailLower;
+          (ticketsByDest[dest] ||= []).push(t);
+        }
+
+        for (const [destEmail, group] of Object.entries(ticketsByDest)) {
+          const ticketsForEmail = await Promise.all(
+            group.map(async (t) => {
+              const sector = bySectorId.get(t.sectorId)!;
+              return {
+                shortCode: t.shortCode,
+                sectorName: sector.name,
+                qrPngBase64: await renderQrPngBase64(t.qrToken),
+              };
+            }),
           );
+          try {
+            if (destEmail === buyerEmailLower) {
+              await this.emails.sendTicketPurchased({
+                to: buyer.email,
+                buyerFirstName: firstName ?? null,
+                eventTitle: event.title,
+                eventArtist: event.artist,
+                eventStartsAt: event.startsAt,
+                venueName: event.venue?.name ?? '',
+                venueCity: event.venue?.city ?? '',
+                tickets: ticketsForEmail,
+              });
+            } else {
+              await this.emails.sendTicketByEmail({
+                to: destEmail,
+                buyerFirstName: group[0]?.holderName?.split(/\s+/)[0] ?? null,
+                eventTitle: event.title,
+                eventArtist: event.artist,
+                eventStartsAt: event.startsAt,
+                venueName: event.venue?.name ?? '',
+                venueCity: event.venue?.city ?? '',
+                tickets: ticketsForEmail,
+              });
+            }
+          } catch (err) {
+            this.logger.warn(
+              `markOrderPaid: ticket email failed for ${destEmail}: ${(err as Error).message}`,
+            );
+          }
         }
       }
     }
@@ -555,8 +652,17 @@ export class OrdersService {
   ): Promise<OrderResponse> {
     const sectorById = new Map(sectors.map((s) => [s.id, s]));
 
+    const batchIds = Array.from(new Set(order.items.map((it) => it.batchId)));
+    const batches = batchIds.length
+      ? await this.dataSource
+          .getRepository(Batch)
+          .find({ where: { id: In(batchIds) } })
+      : [];
+    const batchById = new Map(batches.map((b) => [b.id, b]));
+
     const items = order.items.map((it) => {
       const s = sectorById.get(it.sectorId);
+      const b = batchById.get(it.batchId);
       return {
         id: it.id,
         sectorId: it.sectorId,
@@ -564,6 +670,8 @@ export class OrdersService {
         sectorColorHex: s?.colorHex ?? '#999999',
         qty: it.qty,
         priceCents: it.priceCents,
+        ticketsPerUnit: b?.ticketsPerUnit ?? 1,
+        attendees: it.attendees ?? null,
       };
     });
 

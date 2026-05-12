@@ -45,6 +45,8 @@ export class MyTicketItem {
   @ApiProperty() orderId: string;
   @ApiProperty({ nullable: true, type: String }) usedAt: string | null;
   @ApiProperty() createdAt: string;
+  @ApiProperty({ nullable: true, type: String }) holderName: string | null;
+  @ApiProperty({ nullable: true, type: String }) holderEmail: string | null;
   @ApiProperty({ type: MyTicketEvent }) event: MyTicketEvent;
   @ApiProperty({ type: MyTicketSector }) sector: MyTicketSector;
 }

@@ -20,6 +20,10 @@ export class CreateBatchDto {
   @IsOptional() @IsBoolean()
   producerOnly?: boolean;
 
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @IsOptional() @IsInt() @Min(1)
+  ticketsPerUnit?: number;
+
   @ApiPropertyOptional() @IsOptional() @IsDateString()
   startsAt?: string;
 

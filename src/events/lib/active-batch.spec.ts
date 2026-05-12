@@ -4,6 +4,7 @@ const mk = (over: Partial<BatchSnapshot>): BatchSnapshot => ({
   id: 'b',
   name: 'L',
   priceCents: 100,
+  ticketsPerUnit: 1,
   capacity: 10,
   sold: 0,
   reserved: 0,
