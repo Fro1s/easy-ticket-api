@@ -144,6 +144,31 @@ export class ProducerEventsService {
     }
     const kpis = await this.computeKpis(event);
     const summary = this.toSummary(event, kpis);
+    // Source of truth: SUM(qty) por sector e por batch nas orders PAID.
+    // Evita drift dos contadores desnormalizados sector.sold / batch.sold.
+    const soldRows = await this.dataSource
+      .getRepository(OrderItem)
+      .createQueryBuilder('oi')
+      .innerJoin('oi.order', 'o')
+      .innerJoin('oi.sector', 's')
+      .select('oi.sectorId', 'sectorId')
+      .addSelect('oi.batchId', 'batchId')
+      .addSelect('COALESCE(SUM(oi.qty), 0)', 'qty')
+      .where('s.eventId = :eventId', { eventId: event.id })
+      .andWhere('o.status = :paid', { paid: OrderStatus.PAID })
+      .groupBy('oi.sectorId')
+      .addGroupBy('oi.batchId')
+      .getRawMany<{ sectorId: string; batchId: string; qty: string }>();
+    const soldByBatch = new Map(
+      soldRows.map((r) => [r.batchId, Number(r.qty)]),
+    );
+    const soldBySector = new Map<string, number>();
+    for (const r of soldRows) {
+      soldBySector.set(
+        r.sectorId,
+        (soldBySector.get(r.sectorId) ?? 0) + Number(r.qty),
+      );
+    }
     return this.sanitizeForRole(currentUser, {
       ...summary,
       description: event.description,
@@ -159,7 +184,7 @@ export class ProducerEventsService {
           name: s.name,
           colorHex: s.colorHex,
           capacity: s.capacity,
-          sold: s.sold,
+          sold: soldBySector.get(s.id) ?? 0,
           reserved: s.reserved,
           sortOrder: s.sortOrder,
           batches: (s.batches ?? [])
@@ -170,7 +195,7 @@ export class ProducerEventsService {
               name: b.name,
               priceCents: b.priceCents,
               capacity: b.capacity,
-              sold: b.sold,
+              sold: soldByBatch.get(b.id) ?? 0,
               reserved: b.reserved,
               sortOrder: b.sortOrder,
               startsAt: b.startsAt ? b.startsAt.toISOString() : null,
@@ -190,17 +215,22 @@ export class ProducerEventsService {
   }
 
   private async computeKpis(event: Event): Promise<ProducerEventKpis> {
-    const ticketsSold = event.sectors.reduce((sum, s) => sum + s.sold, 0);
-    const revenueRow = await this.dataSource
+    // Source of truth: SUM(qty) in PAID order_items. Counters em sector.sold /
+    // batch.sold são desnormalizados e ficaram drifted em prod (ver auditoria
+    // 2026-05-11 no HANDOFF). KPI agora calcula direto pra evitar a classe de
+    // bug — UI mostrava 50 quando o real eram 54.
+    const row = await this.dataSource
       .getRepository(OrderItem)
       .createQueryBuilder('oi')
       .innerJoin('oi.order', 'o')
       .innerJoin('oi.sector', 's')
-      .select('COALESCE(SUM(oi.priceCents * oi.qty), 0)', 'gross')
+      .select('COALESCE(SUM(oi.qty), 0)', 'qty')
+      .addSelect('COALESCE(SUM(oi.priceCents * oi.qty), 0)', 'gross')
       .where('s.eventId = :eventId', { eventId: event.id })
       .andWhere('o.status = :paid', { paid: OrderStatus.PAID })
-      .getRawOne<{ gross: string }>();
-    const grossRevenueCents = Number(revenueRow?.gross ?? 0);
+      .getRawOne<{ qty: string; gross: string }>();
+    const ticketsSold = Number(row?.qty ?? 0);
+    const grossRevenueCents = Number(row?.gross ?? 0);
     const platformFeeCents = Math.round(
       grossRevenueCents * Number(event.platformFeeRate),
     );
@@ -415,6 +445,18 @@ export class ProducerEventsService {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
 
+    // Volunteers (PRODUCER que não é a Letícia) não veem orders CANCELLED/EXPIRED
+    // — lista ficou poluída pra quem opera no dia-a-dia. Admin e Letícia veem
+    // tudo. Email da Letícia é hard-coded por enquanto; quando houver permissão
+    // granular, trocar por uma flag/role.
+    const canSeeAllStatuses =
+      currentUser.role === Role.ADMIN ||
+      currentUser.email?.toLowerCase() ===
+        'leticia.silveira@projetocriancafeliz.org';
+    const hideStatuses = canSeeAllStatuses
+      ? []
+      : [OrderStatus.CANCELLED, OrderStatus.EXPIRED];
+
     const idsQb = this.orders
       .createQueryBuilder('o')
       .select('o.id', 'id')
@@ -430,6 +472,9 @@ export class ProducerEventsService {
 
     if (query.status) {
       idsQb.andWhere('o.status = :status', { status: query.status });
+    }
+    if (hideStatuses.length) {
+      idsQb.andWhere('o.status NOT IN (:...hideStatuses)', { hideStatuses });
     }
     if (query.q) {
       idsQb.andWhere('(u.email ILIKE :q OR o.id ILIKE :q)', {
@@ -448,6 +493,9 @@ export class ProducerEventsService {
       .where('s.eventId = :eventId', { eventId: detail.id });
     if (query.status) {
       totalQb.andWhere('o.status = :status', { status: query.status });
+    }
+    if (hideStatuses.length) {
+      totalQb.andWhere('o.status NOT IN (:...hideStatuses)', { hideStatuses });
     }
     if (query.q) {
       totalQb.andWhere('(u.email ILIKE :q OR o.id ILIKE :q)', {
@@ -489,8 +537,9 @@ export class ProducerEventsService {
         reservedUntil: o.reservedUntil.toISOString(),
         // Mostra "confirmar pagamento" para qualquer pedido PENDING sem charge
         // no gateway — cobre tanto eventos MANUAL_PIX quanto Abacate com vendas
-        // por vendedor (que são sempre offline/manual).
-        isManualPending: o.status === OrderStatus.PENDING && !o.paymentId,
+        // por vendedor (que são sempre offline/manual). Usa paymentMethod como
+        // sinal porque sell-by-email reusa paymentId como chave de idempotência.
+        isManualPending: o.status === OrderStatus.PENDING && o.paymentMethod === null,
       }));
 
     return { items, total: totalCount, page, pageSize };

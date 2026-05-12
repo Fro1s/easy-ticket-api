@@ -26,7 +26,8 @@
     "seed": "ts-node -r tsconfig-paths/register src/seed/seed.ts",
     "seed:admin": "ts-node -r tsconfig-paths/register src/seed/create-admin.ts",
     "seed:producers": "ts-node -r tsconfig-paths/register src/seed/create-producers.ts",
-    "seed:wipe": "ts-node -r tsconfig-paths/register src/seed/wipe-keep-users.ts"
+    "seed:wipe": "ts-node -r tsconfig-paths/register src/seed/wipe-keep-users.ts",
+    "seed:backfill": "ts-node -r tsconfig-paths/register src/seed/backfill-missing-tickets.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
