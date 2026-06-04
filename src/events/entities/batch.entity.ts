@@ -43,6 +43,9 @@ export class Batch {
   @Column('boolean', { default: false })
   producerOnly: boolean;
 
+  @Column('boolean', { default: true })
+  isActive: boolean;
+
   @Column('int', { default: 1 })
   ticketsPerUnit: number;
 
