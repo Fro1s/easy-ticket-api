@@ -20,6 +20,10 @@ export class UpdateBatchDto {
   @IsOptional() @IsBoolean()
   producerOnly?: boolean;
 
+  @ApiPropertyOptional()
+  @IsOptional() @IsBoolean()
+  isActive?: boolean;
+
   @ApiPropertyOptional({ minimum: 1 })
   @IsOptional() @IsInt() @Min(1)
   ticketsPerUnit?: number;

@@ -20,6 +20,7 @@ export class ProducerEventBatchSummary {
   @ApiProperty() sold: number;
   @ApiProperty() reserved: number;
   @ApiProperty() sortOrder: number;
+  @ApiProperty() isActive: boolean;
   @ApiProperty({ nullable: true, type: String }) startsAt: string | null;
   @ApiProperty({ nullable: true, type: String }) endsAt: string | null;
 }

@@ -199,6 +199,7 @@ export class ProducerEventsService {
               sold: soldByBatch.get(b.id) ?? 0,
               reserved: b.reserved,
               sortOrder: b.sortOrder,
+              isActive: b.isActive,
               startsAt: b.startsAt ? b.startsAt.toISOString() : null,
               endsAt: b.endsAt ? b.endsAt.toISOString() : null,
             })),
