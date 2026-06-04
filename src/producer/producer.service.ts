@@ -276,4 +276,30 @@ export class ProducerService {
       };
     });
   }
+
+  async resendEmail(
+    currentUser: AuthenticatedUser,
+    orderId: string,
+  ): Promise<{ sent: number }> {
+    const dbUser = await this.users.findById(currentUser.id);
+    if (!dbUser) throw new ForbiddenException();
+
+    const order = await this.dataSource.getRepository(Order).findOne({
+      where: { id: orderId },
+      relations: { items: { sector: { event: true } } },
+    });
+    if (!order) throw new NotFoundException('order not found');
+    const event = order.items[0]?.sector?.event;
+    if (!event) throw new NotFoundException('order has no event');
+    if (
+      currentUser.role !== Role.ADMIN &&
+      dbUser.producerId !== event.producerId
+    ) {
+      throw new ForbiddenException(
+        'producer can only resend emails for their own events',
+      );
+    }
+    const sent = await this.orders.resendTicketsForOrder(orderId);
+    return { sent };
+  }
 }

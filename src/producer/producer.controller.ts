@@ -43,6 +43,7 @@ import {
   ProducerEventListResponse,
 } from './dto/producer-event.response';
 import { ConfirmedOrderResponse } from '../orders/dto/order.response';
+import { ResendEmailResponse } from './dto/resend-email.response';
 
 @ApiTags('producer')
 @ApiBearerAuth()
@@ -197,6 +198,17 @@ export class ProducerController {
     @Body() dto: ConfirmManualPaymentDto,
   ): Promise<ConfirmedOrderResponse> {
     return this.producer.confirmManualPayment(user, id, dto.reference ?? null);
+  }
+
+  @Post('orders/:id/resend-email')
+  @Roles(Role.PRODUCER, Role.ADMIN)
+  @ApiOperation({ summary: 'Resend the ticket email(s) for a paid order' })
+  @ApiResponse({ status: 200, type: ResendEmailResponse })
+  resendEmail(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<ResendEmailResponse> {
+    return this.producer.resendEmail(user, id);
   }
 
   @Post('orders/:id/cancel')
