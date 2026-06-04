@@ -12,6 +12,8 @@ export interface CreateUserInput {
   phone: string | null;
   passwordHash: string | null;
   role?: Role;
+  producerId?: string | null;
+  claimedAt?: Date | null;
 }
 
 @Injectable()
