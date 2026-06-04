@@ -32,6 +32,7 @@ import { CancelOrderResponse } from './dto/cancel-order.response';
 import { ConfirmManualPaymentDto } from './dto/confirm-manual-payment.dto';
 import { SellByEmailDto, SellByEmailResponse } from './dto/sell-by-email.dto';
 import { ValidateTicketDto, ValidateTicketResponse } from './dto/validate-ticket.dto';
+import { AttendeeSearchResponse } from './dto/attendee-search.response';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { CreateEventDto } from './dto/create-event.dto';
 import { ListProducerOrdersQuery } from './dto/list-orders.query';
@@ -138,6 +139,20 @@ export class ProducerController {
     @Query() query: ListProducerOrdersQuery,
   ): Promise<ProducerOrdersResponse> {
     return this.events.listOrders(user, slug, query);
+  }
+
+  @Get('events/:slug/attendees')
+  @Roles(Role.PRODUCER, Role.ADMIN, Role.STAFF)
+  @ApiOperation({
+    summary: 'Search attendees by buyer email/name, holder, or ticket code',
+  })
+  @ApiResponse({ status: 200, type: AttendeeSearchResponse })
+  searchAttendees(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+    @Query('q') q: string,
+  ): Promise<AttendeeSearchResponse> {
+    return this.events.searchAttendees(user, slug, q ?? '');
   }
 
   @Post('events/:id/sell-by-email')

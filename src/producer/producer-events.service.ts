@@ -23,6 +23,10 @@ import { PaymentProvider } from '../common/enums/payment-provider.enum';
 import { UsersService } from '../users/users.service';
 import { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { CreateEventDto } from './dto/create-event.dto';
+import {
+  AttendeeSearchItem,
+  AttendeeSearchResponse,
+} from './dto/attendee-search.response';
 import { ListProducerOrdersQuery } from './dto/list-orders.query';
 import {
   ProducerOrderItem,
@@ -550,6 +554,65 @@ export class ProducerEventsService {
       }));
 
     return { items, total: totalCount, page, pageSize };
+  }
+
+  async searchAttendees(
+    currentUser: AuthenticatedUser,
+    eventSlug: string,
+    q: string,
+  ): Promise<AttendeeSearchResponse> {
+    const detail = await this.getBySlug(currentUser, eventSlug);
+    const term = (q ?? '').trim();
+    if (term.length < 2) return { items: [] };
+    const like = `%${term}%`;
+
+    const rows = await this.dataSource
+      .getRepository(Ticket)
+      .createQueryBuilder('t')
+      .leftJoin('sectors', 's', 's.id = t.sectorId')
+      .leftJoin('users', 'u', 'u.id = t.userId')
+      .where('t.eventId = :eventId', { eventId: detail.id })
+      .andWhere(
+        '(u.email ILIKE :like OR u.name ILIKE :like OR t.holderName ILIKE :like OR t.holderEmail ILIKE :like OR t.shortCode ILIKE :like)',
+        { like },
+      )
+      .select([
+        't.id AS "ticketId"',
+        't.shortCode AS "shortCode"',
+        't.holderName AS "holderName"',
+        't.holderEmail AS "holderEmail"',
+        't.status AS "status"',
+        't.usedAt AS "usedAt"',
+        's.name AS "sectorName"',
+        'u.name AS "buyerName"',
+        'u.email AS "buyerEmail"',
+      ])
+      .orderBy('t.createdAt', 'DESC')
+      .limit(50)
+      .getRawMany<{
+        ticketId: string;
+        shortCode: string;
+        holderName: string | null;
+        holderEmail: string | null;
+        status: string;
+        usedAt: Date | null;
+        sectorName: string | null;
+        buyerName: string | null;
+        buyerEmail: string;
+      }>();
+
+    const items: AttendeeSearchItem[] = rows.map((r) => ({
+      ticketId: r.ticketId,
+      shortCode: r.shortCode,
+      holderName: r.holderName,
+      holderEmail: r.holderEmail,
+      buyerName: r.buyerName,
+      buyerEmail: r.buyerEmail,
+      sectorName: r.sectorName ?? '',
+      status: r.status as AttendeeSearchItem['status'],
+      usedAt: r.usedAt ? r.usedAt.toISOString() : null,
+    }));
+    return { items };
   }
 
   private toSummary(
