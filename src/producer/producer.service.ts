@@ -201,12 +201,18 @@ export class ProducerService {
     if (!dbUser) throw new ForbiddenException();
 
     return this.dataSource.transaction(async (mgr) => {
-      const ticket = await mgr
+      const qb = mgr
         .getRepository(Ticket)
         .createQueryBuilder('t')
-        .setLock('pessimistic_write')
-        .where('t.qrToken = :token', { token: dto.qrToken })
-        .getOne();
+        .setLock('pessimistic_write');
+      if (dto.ticketId) {
+        qb.where('t.id = :id', { id: dto.ticketId });
+      } else if (dto.shortCode) {
+        qb.where('UPPER(t.shortCode) = UPPER(:code)', { code: dto.shortCode });
+      } else {
+        qb.where('t.qrToken = :token', { token: dto.qrToken });
+      }
+      const ticket = await qb.getOne();
 
       if (!ticket) {
         throw new NotFoundException({ ok: false, reason: 'NOT_FOUND' });
