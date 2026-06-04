@@ -43,6 +43,7 @@ export class ProducerEventKpis {
   @ApiProperty() platformFeeCents: number;
   @ApiProperty() netCents: number;
   @ApiProperty() pendingManualOrdersCount: number;
+  @ApiProperty() ticketsValidated: number;
 }
 
 export class ProducerEventSummary {

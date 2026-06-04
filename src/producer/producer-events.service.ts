@@ -16,6 +16,8 @@ import { Venue } from '../venues/entities/venue.entity';
 import { Producer } from '../producers/entities/producer.entity';
 import { OrderStatus } from '../common/enums/order-status.enum';
 import { EventStatus } from '../common/enums/event-status.enum';
+import { Ticket } from '../tickets/entities/ticket.entity';
+import { TicketStatus } from '../common/enums/ticket-status.enum';
 import { Role } from '../common/enums/role.enum';
 import { PaymentProvider } from '../common/enums/payment-provider.enum';
 import { UsersService } from '../users/users.service';
@@ -251,12 +253,19 @@ export class ProducerEventsService {
       .andWhere('o.reservedUntil > NOW()')
       .andWhere('o.paymentId IS NULL')
       .getCount();
+    const ticketsValidated = await this.dataSource
+      .getRepository(Ticket)
+      .createQueryBuilder('t')
+      .where('t.eventId = :eventId', { eventId: event.id })
+      .andWhere('t.status = :used', { used: TicketStatus.USED })
+      .getCount();
     return {
       ticketsSold,
       grossRevenueCents,
       platformFeeCents,
       netCents,
       pendingManualOrdersCount,
+      ticketsValidated,
     };
   }
 
