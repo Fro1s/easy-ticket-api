@@ -14,6 +14,7 @@ import { ProducerModule } from './producer/producer.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { EmailModule } from './email/email.module';
 import { ClaimTokensModule } from './claim-tokens/claim-tokens.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ClaimTokensModule } from './claim-tokens/claim-tokens.module';
     TicketsModule,
     EmailModule,
     ClaimTokensModule,
+    AdminModule,
   ],
 })
 export class AppModule {}
