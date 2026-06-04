@@ -157,6 +157,7 @@ export class OrdersService {
             sortOrder: b.sortOrder,
             startsAt: b.startsAt,
             endsAt: b.endsAt,
+            isActive: b.isActive,
           })),
           now,
         );

@@ -166,6 +166,7 @@ export class SellByEmailService {
           sortOrder: b.sortOrder,
           startsAt: b.startsAt,
           endsAt: b.endsAt,
+          isActive: b.isActive,
         })),
         new Date(),
       );

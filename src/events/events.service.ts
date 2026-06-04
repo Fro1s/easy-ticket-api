@@ -26,11 +26,14 @@ function toBatchSnapshot(b: Batch): BatchSnapshot {
     sortOrder: b.sortOrder,
     startsAt: b.startsAt,
     endsAt: b.endsAt,
+    isActive: b.isActive,
   };
 }
 
 function publicBatches(sector: Sector): Batch[] {
-  return (sector.batches ?? []).filter((batch) => !batch.producerOnly);
+  return (sector.batches ?? []).filter(
+    (batch) => !batch.producerOnly && batch.isActive,
+  );
 }
 
 function sumPublicBatches(
