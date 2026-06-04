@@ -11,6 +11,7 @@ const mk = (over: Partial<BatchSnapshot>): BatchSnapshot => ({
   sortOrder: 0,
   startsAt: null,
   endsAt: null,
+  isActive: true,
   ...over,
 });
 
@@ -64,6 +65,14 @@ describe('resolveActiveBatch', () => {
       mk({ id: 'b2', sortOrder: 2, capacity: 5, sold: 5 }),
     ];
     expect(resolveActiveBatch(batches, now).active).toBeNull();
+  });
+
+  it('skips batch that is inactive (isActive=false)', () => {
+    const batches = [
+      mk({ id: 'b1', sortOrder: 1, isActive: false }),
+      mk({ id: 'b2', sortOrder: 2 }),
+    ];
+    expect(resolveActiveBatch(batches, now).active?.id).toBe('b2');
   });
 
   it('next is the upcoming batch by startsAt when active is the open one', () => {

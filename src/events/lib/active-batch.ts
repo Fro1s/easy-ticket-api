@@ -9,6 +9,7 @@ export interface BatchSnapshot {
   sortOrder: number;
   startsAt: Date | null;
   endsAt: Date | null;
+  isActive: boolean;
 }
 
 export interface ActiveBatchResult {
@@ -17,6 +18,7 @@ export interface ActiveBatchResult {
 }
 
 function isOpen(b: BatchSnapshot, at: Date): boolean {
+  if (!b.isActive) return false;
   if (b.sold + b.reserved >= b.capacity) return false;
   if (b.startsAt && b.startsAt > at) return false;
   if (b.endsAt && b.endsAt <= at) return false;
@@ -35,6 +37,7 @@ export function resolveActiveBatch(
         (b) =>
           b.id !== active.id &&
           b.sortOrder > active.sortOrder &&
+          b.isActive &&
           (b.sold + b.reserved) < b.capacity &&
           (!b.endsAt || b.endsAt > at),
       ) ?? null
