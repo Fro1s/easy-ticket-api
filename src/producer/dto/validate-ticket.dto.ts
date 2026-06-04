@@ -1,11 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsOptional, IsString, ValidateIf } from 'class-validator';
 
 export class ValidateTicketDto {
-  @ApiProperty({ description: 'QR token from the ticket (et:<orderId>:<cuid>)' })
+  @ApiPropertyOptional({ description: 'QR token from the ticket (et:<orderId>:<cuid>)' })
+  @ValidateIf((o: ValidateTicketDto) => !o.ticketId && !o.shortCode)
   @IsString()
-  @IsNotEmpty()
-  qrToken: string;
+  qrToken?: string;
+
+  @ApiPropertyOptional({ description: 'Ticket id (manual validation from panel)' })
+  @IsOptional()
+  @IsString()
+  ticketId?: string;
+
+  @ApiPropertyOptional({ description: 'Ticket short code, e.g. ET-XXXXXXXXX' })
+  @IsOptional()
+  @IsString()
+  shortCode?: string;
 }
 
 export class ValidateTicketSuccessTicket {
