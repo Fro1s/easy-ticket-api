@@ -530,68 +530,102 @@ export class OrdersService {
 
     // Fire email out of band (don't fail the transaction if email throws).
     if (opts.sendEmail) {
-      const buyer = await this.users.findById(order.userId);
-      if (buyer?.email) {
-        const buyerEmailLower = buyer.email.toLowerCase();
-        const firstName = buyer.name ? buyer.name.trim().split(/\s+/)[0] : null;
-
-        const ticketsByDest: Record<string, Ticket[]> = {};
-        for (const t of tickets) {
-          const dest =
-            t.holderEmail && t.holderEmail.toLowerCase() !== buyerEmailLower
-              ? t.holderEmail.toLowerCase()
-              : buyerEmailLower;
-          (ticketsByDest[dest] ||= []).push(t);
-        }
-
-        for (const [destEmail, group] of Object.entries(ticketsByDest)) {
-          const ticketsForEmail = await Promise.all(
-            group.map(async (t) => {
-              const sector = bySectorId.get(t.sectorId)!;
-              return {
-                shortCode: t.shortCode,
-                sectorName: sector.name,
-                qrPngBase64: await renderQrPngBase64(t.qrToken),
-              };
-            }),
-          );
-          try {
-            if (destEmail === buyerEmailLower) {
-              await this.emails.sendTicketPurchased({
-                to: buyer.email,
-                buyerFirstName: firstName ?? null,
-                eventTitle: event.title,
-                eventArtist: event.artist,
-                eventStartsAt: event.startsAt,
-                venueName: event.venue?.name ?? '',
-                venueCity: event.venue?.city ?? '',
-                tickets: ticketsForEmail,
-              });
-            } else {
-              await this.emails.sendTicketByEmail({
-                to: destEmail,
-                buyerFirstName: group[0]?.holderName?.split(/\s+/)[0] ?? null,
-                eventTitle: event.title,
-                eventArtist: event.artist,
-                eventStartsAt: event.startsAt,
-                venueName: event.venue?.name ?? '',
-                venueCity: event.venue?.city ?? '',
-                tickets: ticketsForEmail,
-              });
-            }
-          } catch (err) {
-            this.logger.warn(
-              `markOrderPaid: ticket email failed for ${destEmail}: ${(err as Error).message}`,
-            );
-          }
-        }
-      }
+      await this.distributeTicketEmails(order, tickets, event, bySectorId);
     }
 
     return { ...base, ticketIds: tickets.map((t) => t.id) };
   }
 
+  async resendTicketsForOrder(orderId: string): Promise<number> {
+    const order = await this.dataSource.getRepository(Order).findOne({
+      where: { id: orderId },
+      relations: { items: { sector: { event: { venue: true } } } },
+    });
+    if (!order) throw new NotFoundException('order not found');
+    if (order.status !== OrderStatus.PAID) {
+      throw new BadRequestException('only paid orders can be resent');
+    }
+    const tickets = await this.dataSource
+      .getRepository(Ticket)
+      .find({ where: { orderId: order.id } });
+    if (!tickets.length) {
+      throw new BadRequestException('order has no tickets to resend');
+    }
+    const event = order.items[0]?.sector?.event;
+    if (!event) throw new NotFoundException('order has no event');
+    const sectorById = new Map(
+      order.items.map((it) => [it.sectorId, it.sector]),
+    );
+    return this.distributeTicketEmails(order, tickets, event, sectorById);
+  }
+
   // ---------- private ----------
+
+  private async distributeTicketEmails(
+    order: Order,
+    tickets: Ticket[],
+    event: Event,
+    sectorById: Map<string, Sector>,
+  ): Promise<number> {
+    const buyer = await this.users.findById(order.userId);
+    if (!buyer?.email) return 0;
+    const buyerEmailLower = buyer.email.toLowerCase();
+    const firstName = buyer.name ? buyer.name.trim().split(/\s+/)[0] : null;
+
+    const ticketsByDest: Record<string, Ticket[]> = {};
+    for (const t of tickets) {
+      const dest =
+        t.holderEmail && t.holderEmail.toLowerCase() !== buyerEmailLower
+          ? t.holderEmail.toLowerCase()
+          : buyerEmailLower;
+      (ticketsByDest[dest] ||= []).push(t);
+    }
+
+    let sent = 0;
+    for (const [destEmail, group] of Object.entries(ticketsByDest)) {
+      const ticketsForEmail = await Promise.all(
+        group.map(async (t) => {
+          const sector = sectorById.get(t.sectorId);
+          return {
+            shortCode: t.shortCode,
+            sectorName: sector?.name ?? '',
+            qrPngBase64: await renderQrPngBase64(t.qrToken),
+          };
+        }),
+      );
+      try {
+        if (destEmail === buyerEmailLower) {
+          await this.emails.sendTicketPurchased({
+            to: buyer.email,
+            buyerFirstName: firstName ?? null,
+            eventTitle: event.title,
+            eventArtist: event.artist,
+            eventStartsAt: event.startsAt,
+            venueName: event.venue?.name ?? '',
+            venueCity: event.venue?.city ?? '',
+            tickets: ticketsForEmail,
+          });
+        } else {
+          await this.emails.sendTicketByEmail({
+            to: destEmail,
+            buyerFirstName: group[0]?.holderName?.split(/\s+/)[0] ?? null,
+            eventTitle: event.title,
+            eventArtist: event.artist,
+            eventStartsAt: event.startsAt,
+            venueName: event.venue?.name ?? '',
+            venueCity: event.venue?.city ?? '',
+            tickets: ticketsForEmail,
+          });
+        }
+        sent += 1;
+      } catch (err) {
+        this.logger.warn(
+          `distributeTicketEmails: ticket email failed for ${destEmail}: ${(err as Error).message}`,
+        );
+      }
+    }
+    return sent;
+  }
 
   private async expireIfStale(order: Order): Promise<void> {
     if (
