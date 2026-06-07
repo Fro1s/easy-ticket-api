@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { createId } from '@paralleldrive/cuid2';
 import { User } from './entities/user.entity';
 import { Role } from '../common/enums/role.enum';
+import { normalizeEmail } from './lib/normalize-email';
 
 export interface CreateUserInput {
   email: string;
@@ -21,7 +22,7 @@ export class UsersService {
   constructor(@InjectRepository(User) private readonly repo: Repository<User>) {}
 
   findByEmail(email: string): Promise<User | null> {
-    return this.repo.findOne({ where: { email } });
+    return this.repo.findOne({ where: { email: normalizeEmail(email) } });
   }
 
   findById(id: string): Promise<User | null> {
@@ -31,6 +32,7 @@ export class UsersService {
   async create(input: CreateUserInput): Promise<User> {
     const user = this.repo.create({
       ...input,
+      email: normalizeEmail(input.email),
       role: input.role ?? Role.BUYER,
       referralCode: createId().slice(0, 10).toUpperCase(),
     });

@@ -24,7 +24,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: JwtPayload) {
-    const user = await this.users.findByEmail(payload.email);
+    // Resolve pelo `sub` (id imutável), NUNCA pelo e-mail: e-mail é mutável e,
+    // com linhas duplicadas por caixa, resolver por e-mail vinculava o request
+    // à linha errada — vazando escopo de um produtor para outro.
+    const user = await this.users.findById(payload.sub);
     if (!user) throw new UnauthorizedException();
     return { id: user.id, email: user.email, role: user.role };
   }

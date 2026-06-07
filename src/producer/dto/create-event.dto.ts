@@ -130,6 +130,15 @@ export class CreateEventDto {
   @Max(0.5)
   platformFeeRate: number;
 
+  @ApiPropertyOptional({
+    description:
+      'Produtor dono do evento. Apenas ADMIN pode informar; PRODUCER usa sempre o próprio vínculo.',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(1, 32)
+  producerId?: string;
+
   @ApiProperty({ type: [CreateEventSectorDto] })
   @IsArray()
   @ArrayMinSize(1)

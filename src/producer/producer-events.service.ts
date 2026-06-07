@@ -23,6 +23,7 @@ import { PaymentProvider } from '../common/enums/payment-provider.enum';
 import { UsersService } from '../users/users.service';
 import { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { CreateEventDto } from './dto/create-event.dto';
+import { resolveCreateProducerId } from './lib/resolve-create-producer-id';
 import {
   AttendeeSearchItem,
   AttendeeSearchResponse,
@@ -277,24 +278,19 @@ export class ProducerEventsService {
     currentUser: AuthenticatedUser,
     dto: CreateEventDto,
   ): Promise<ProducerEventDetail> {
-    let producerId: string | null;
-    if (currentUser.role === Role.ADMIN) {
-      const dbUser = await this.users.findById(currentUser.id);
-      producerId = dbUser?.producerId ?? null;
-      if (!producerId) {
-        const anyProducer = await this.dataSource
-          .getRepository(Producer)
-          .createQueryBuilder('p')
-          .select('p.id', 'id')
-          .limit(1)
-          .getRawOne<{ id: string }>();
-        if (!anyProducer) {
-          throw new BadRequestException('no producer exists yet');
-        }
-        producerId = anyProducer.id;
-      }
-    } else {
-      producerId = await this.resolveScope(currentUser);
+    const dbUser = await this.users.findById(currentUser.id);
+    const producerId = resolveCreateProducerId({
+      role: currentUser.role,
+      ownProducerId: dbUser?.producerId ?? null,
+      dtoProducerId: dto.producerId,
+    });
+
+    // Garante que o produtor-alvo existe (relevante quando ADMIN informa um id).
+    const producerExists = await this.dataSource
+      .getRepository(Producer)
+      .findOne({ where: { id: producerId }, select: { id: true } });
+    if (!producerExists) {
+      throw new BadRequestException('producer not found');
     }
 
     const venue = await this.venues.findOne({ where: { id: dto.venueId } });
@@ -337,7 +333,7 @@ export class ProducerEventsService {
         posterUrl: dto.posterUrl,
         description: dto.description,
         venueId: dto.venueId,
-        producerId: producerId!,
+        producerId,
         status: EventStatus.DRAFT,
         paymentProvider: dto.paymentProvider,
         pixKey: dto.pixKey ?? null,
