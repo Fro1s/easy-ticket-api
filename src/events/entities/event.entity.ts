@@ -100,6 +100,9 @@ export class Event {
   @CreateDateColumn()
   createdAt: Date;
 
+  @Column('timestamptz', { nullable: true })
+  featuredAt: Date | null;
+
   @OneToMany(() => Sector, (sector) => sector.event, { cascade: true })
   sectors: Sector[];
 }
