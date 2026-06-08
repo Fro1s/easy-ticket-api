@@ -14,6 +14,8 @@ import {
   AdminProducerUser,
   ReassignEventResult,
 } from './dto/admin-producers.response';
+import { FeatureEventDto } from './dto/feature-event.dto';
+import { AdminEventActionResult } from './dto/admin-event-action.response';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -55,5 +57,26 @@ export class AdminController {
     @Body() dto: ReassignEventDto,
   ): Promise<ReassignEventResult> {
     return this.admin.reassignEvent(eventId, dto);
+  }
+
+  @Patch('events/:id/archive')
+  @ApiOperation({ summary: 'Desativa um evento (some do site, painel mantém)' })
+  @ApiResponse({ status: 200, type: AdminEventActionResult })
+  archiveEvent(@Param('id') id: string): Promise<AdminEventActionResult> {
+    return this.admin.archiveEvent(id);
+  }
+
+  @Patch('events/:id/unarchive')
+  @ApiOperation({ summary: 'Reativa um evento arquivado' })
+  @ApiResponse({ status: 200, type: AdminEventActionResult })
+  unarchiveEvent(@Param('id') id: string): Promise<AdminEventActionResult> {
+    return this.admin.unarchiveEvent(id);
+  }
+
+  @Patch('events/:id/feature')
+  @ApiOperation({ summary: 'Destaca/remove destaque do evento na home' })
+  @ApiResponse({ status: 200, type: AdminEventActionResult })
+  featureEvent(@Param('id') id: string, @Body() dto: FeatureEventDto): Promise<AdminEventActionResult> {
+    return this.admin.featureEvent(id, dto.featured);
   }
 }
