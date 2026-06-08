@@ -1,10 +1,11 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { createId } from '@paralleldrive/cuid2';
 import * as argon2 from 'argon2';
 import { Producer } from '../producers/entities/producer.entity';
@@ -12,6 +13,7 @@ import { Event } from '../events/entities/event.entity';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { Role } from '../common/enums/role.enum';
+import { EventStatus } from '../common/enums/event-status.enum';
 import { CreateProducerDto } from './dto/create-producer.dto';
 import { CreateProducerUserDto } from './dto/create-producer-user.dto';
 import { ReassignEventDto } from './dto/reassign-event.dto';
@@ -21,6 +23,8 @@ import {
   AdminProducerUser,
   ReassignEventResult,
 } from './dto/admin-producers.response';
+import { resolveFeatureToggle } from './lib/resolve-feature-toggle';
+import { AdminEventActionResult } from './dto/admin-event-action.response';
 
 @Injectable()
 export class AdminService {
@@ -29,6 +33,7 @@ export class AdminService {
     @InjectRepository(Event) private readonly events: Repository<Event>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly usersService: UsersService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async listProducers(): Promise<AdminProducersResponse> {
@@ -132,5 +137,51 @@ export class AdminService {
     if (!producer) throw new NotFoundException('producer not found');
     await this.events.update(eventId, { producerId: dto.producerId });
     return { id: eventId, producerId: dto.producerId };
+  }
+
+  private toActionResult(e: Event): AdminEventActionResult {
+    return {
+      id: e.id,
+      status: e.status,
+      featuredAt: e.featuredAt ? e.featuredAt.toISOString() : null,
+    };
+  }
+
+  async archiveEvent(eventId: string): Promise<AdminEventActionResult> {
+    const event = await this.events.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('event not found');
+    if (event.status !== EventStatus.PUBLISHED) {
+      throw new BadRequestException('só é possível desativar um evento publicado');
+    }
+    event.status = EventStatus.ARCHIVED;
+    event.featuredAt = null; // evento fora do site não pode ser destaque
+    await this.events.save(event);
+    return this.toActionResult(event);
+  }
+
+  async unarchiveEvent(eventId: string): Promise<AdminEventActionResult> {
+    const event = await this.events.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('event not found');
+    if (event.status !== EventStatus.ARCHIVED) {
+      throw new BadRequestException('só é possível reativar um evento arquivado');
+    }
+    event.status = EventStatus.PUBLISHED;
+    await this.events.save(event);
+    return this.toActionResult(event);
+  }
+
+  async featureEvent(eventId: string, featured: boolean): Promise<AdminEventActionResult> {
+    const event = await this.events.findOne({ where: { id: eventId } });
+    if (!event) throw new NotFoundException('event not found');
+    const effect = resolveFeatureToggle({ status: event.status, featured });
+    await this.dataSource.transaction(async (mgr) => {
+      const repo = mgr.getRepository(Event);
+      if (effect.clearOthers) {
+        await repo.createQueryBuilder().update(Event).set({ featuredAt: null }).where('"featuredAt" IS NOT NULL').execute();
+      }
+      event.featuredAt = effect.setTarget ? new Date() : null;
+      await repo.save(event);
+    });
+    return this.toActionResult(event);
   }
 }
