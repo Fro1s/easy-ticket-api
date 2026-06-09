@@ -61,6 +61,7 @@ export class ProducerEventSummary {
   @ApiProperty({ type: ProducerEventVenue }) venue: ProducerEventVenue;
   @ApiProperty({ type: ProducerEventKpis, nullable: true })
   kpis: ProducerEventKpis | null;
+  @ApiProperty({ nullable: true, type: String }) featuredAt: string | null;
 }
 
 export class ProducerEventDetail extends ProducerEventSummary {

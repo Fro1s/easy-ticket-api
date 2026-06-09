@@ -634,6 +634,7 @@ export class ProducerEventsService {
         state: event.venue.state,
       },
       kpis,
+      featuredAt: event.featuredAt ? event.featuredAt.toISOString() : null,
     };
   }
 }
