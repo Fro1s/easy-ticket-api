@@ -97,6 +97,9 @@ export class Event {
   })
   platformFeeRate: number;
 
+  @Column('boolean', { default: true })
+  cardEnabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 
