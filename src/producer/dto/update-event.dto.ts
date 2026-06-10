@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -94,4 +95,9 @@ export class UpdateEventDto {
   @Min(0)
   @Max(0.5)
   platformFeeRate?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  cardEnabled?: boolean;
 }

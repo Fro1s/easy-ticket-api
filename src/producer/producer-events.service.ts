@@ -211,6 +211,7 @@ export class ProducerEventsService {
               endsAt: b.endsAt ? b.endsAt.toISOString() : null,
             })),
         })),
+      cardEnabled: event.cardEnabled,
     });
   }
 
@@ -411,6 +412,7 @@ export class ProducerEventsService {
       patch.pixHolderName = dto.pixHolderName || null;
     if (dto.platformFeeRate !== undefined)
       patch.platformFeeRate = dto.platformFeeRate;
+    if (dto.cardEnabled !== undefined) patch.cardEnabled = dto.cardEnabled;
 
     const start = patch.startsAt ?? new Date(detail.startsAt);
     const doors = patch.doorsAt ?? new Date(detail.doorsAt);
