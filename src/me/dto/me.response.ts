@@ -49,6 +49,7 @@ export class MyTicketItem {
   @ApiProperty({ nullable: true, type: String }) holderEmail: string | null;
   @ApiProperty({ type: MyTicketEvent }) event: MyTicketEvent;
   @ApiProperty({ type: MyTicketSector }) sector: MyTicketSector;
+  @ApiProperty({ nullable: true, type: String }) batchName: string | null;
 }
 
 export class MyTicketsResponse {

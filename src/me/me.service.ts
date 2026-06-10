@@ -56,6 +56,7 @@ export class MeService {
       .leftJoin('events', 'e', 'e.id = t.eventId')
       .leftJoin('venues', 'v', 'v.id = e.venueId')
       .leftJoin('sectors', 's', 's.id = t.sectorId')
+      .leftJoin('batches', 'b', 'b.id = t.batchId')
       .leftJoin('order_items', 'oi', 'oi.orderId = t.orderId AND oi.sectorId = t.sectorId')
       .where('t.userId = :userId', { userId });
 
@@ -93,6 +94,7 @@ export class MeService {
         's.name AS s_name',
         's.colorHex AS s_color',
         'oi.priceCents AS oi_price',
+        'b.name AS b_name',
       ])
       .skip(skip)
       .take(pageSize)
@@ -127,6 +129,7 @@ export class MeService {
         colorHex: r.s_color,
         priceCents: Number(r.oi_price ?? 0),
       },
+      batchName: r.b_name ?? null,
     }));
 
     return { items, total, page, pageSize };
@@ -138,6 +141,7 @@ export class MeService {
       .leftJoin('events', 'e', 'e.id = t.eventId')
       .leftJoin('venues', 'v', 'v.id = e.venueId')
       .leftJoin('sectors', 's', 's.id = t.sectorId')
+      .leftJoin('batches', 'b', 'b.id = t.batchId')
       .leftJoin('order_items', 'oi', 'oi.orderId = t.orderId AND oi.sectorId = t.sectorId')
       .where('t.id = :ticketId', { ticketId })
       .andWhere('t.userId = :userId', { userId })
@@ -166,6 +170,7 @@ export class MeService {
         's.name AS s_name',
         's.colorHex AS s_color',
         'oi.priceCents AS oi_price',
+        'b.name AS b_name',
       ])
       .getRawOne();
 
@@ -200,6 +205,7 @@ export class MeService {
         colorHex: row.s_color,
         priceCents: Number(row.oi_price ?? 0),
       },
+      batchName: row.b_name ?? null,
     };
   }
 
