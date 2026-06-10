@@ -41,6 +41,9 @@ export class Ticket {
   @Column('varchar', { length: 32 })
   sectorId: string;
 
+  @Column('varchar', { length: 32, nullable: true })
+  batchId: string | null;
+
   @Index({ unique: true })
   @Column('text')
   qrToken: string;
