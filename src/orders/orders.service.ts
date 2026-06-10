@@ -510,6 +510,7 @@ export class OrdersService {
         t.userId = order.userId;
         t.eventId = sector.eventId;
         t.sectorId = sector.id;
+        t.batchId = batch.id;
         t.status = TicketStatus.VALID;
         const attendee = item.attendees?.[i];
         t.holderName = attendee?.name ?? null;
