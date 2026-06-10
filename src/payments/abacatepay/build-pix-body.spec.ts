@@ -58,6 +58,13 @@ describe('buildPixBody', () => {
     expect(body.method).toBe('PIX');
     expect(body.data.amount).toBe(6000);
     expect(body.data.expiresIn).toBe(1800);
-    expect(body.data.externalId).toBe('order-1');
+  });
+
+  it('manda o id do pedido em metadata.pedidoId, NÃO em externalId', () => {
+    // /transparents/create (PIX) não aceita externalId no schema v2 — usar
+    // metadata.pedidoId. Mandar externalId dá 422 "Value should be one of object".
+    const body = buildPixBody({ ...base, customer: { name: 'A', email: 'a@a.com' } });
+    expect(body.data.metadata).toEqual({ pedidoId: 'order-1' });
+    expect('externalId' in body.data).toBe(false);
   });
 });

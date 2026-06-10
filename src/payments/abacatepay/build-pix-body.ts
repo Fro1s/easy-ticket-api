@@ -13,7 +13,7 @@ export interface PixBody {
     amount: number;
     expiresIn: number;
     description: string;
-    externalId: string;
+    metadata: { pedidoId: string };
     customer?: PixBodyCustomer;
   };
 }
@@ -40,7 +40,10 @@ export function buildPixBody(req: PixChargeRequest): PixBody {
       amount: req.amount,
       expiresIn: req.expiresIn,
       description: req.description,
-      externalId: req.externalId,
+      // /transparents/create (PIX) não aceita externalId no schema v2; o id do
+      // pedido vai em metadata.pedidoId. O mapeamento charge.id -> order é feito
+      // via o `id` retornado (persistido no paymentCache/order.paymentId).
+      metadata: { pedidoId: req.externalId },
       ...(Object.keys(customer).length > 0 ? { customer } : {}),
     },
   };
