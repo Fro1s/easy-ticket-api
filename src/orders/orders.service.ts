@@ -41,6 +41,8 @@ import * as QRCode from 'qrcode';
 
 const RESERVATION_TTL_MS = 10 * 60_000;
 const COMPETITOR_FEE_RATE = 0.2;
+/** Máximo de unidades (soma de qty) por pedido. */
+const MAX_QTY_PER_ORDER = 2;
 // Mocked in-memory cache of payment session data per order (until we move to Redis).
 const paymentCache = new Map<string, PaymentChargeInfo>();
 
@@ -109,6 +111,14 @@ export class OrdersService {
       const sectorIds = dto.items.map((it) => it.sectorId);
       if (new Set(sectorIds).size !== sectorIds.length) {
         throw new BadRequestException('duplicate sector in items');
+      }
+
+      // Limite de 2 unidades por pedido (soma de qty de todos os itens).
+      const totalQty = dto.items.reduce((s, it) => s + it.qty, 0);
+      if (totalQty > MAX_QTY_PER_ORDER) {
+        throw new BadRequestException(
+          `máximo de ${MAX_QTY_PER_ORDER} ingressos por pedido`,
+        );
       }
 
       const sectors = await sectorRepo

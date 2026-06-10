@@ -16,10 +16,10 @@ export class CreateOrderItemDto {
   @IsString()
   sectorId: string;
 
-  @ApiProperty({ minimum: 1, maximum: 6 })
+  @ApiProperty({ minimum: 1, maximum: 2 })
   @IsInt()
   @Min(1)
-  @Max(6)
+  @Max(2)
   qty: number;
 }
 
