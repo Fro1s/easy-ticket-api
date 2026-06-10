@@ -74,6 +74,7 @@ export class ProducerEventDetail extends ProducerEventSummary {
   pixHolderName: string | null;
   @ApiProperty({ type: [ProducerEventSectorSummary] })
   sectors: ProducerEventSectorSummary[];
+  @ApiProperty() cardEnabled: boolean;
 }
 
 export class ProducerEventListResponse {

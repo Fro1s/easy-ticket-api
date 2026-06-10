@@ -15,6 +15,7 @@ export class OrderEventResponse {
   @ApiProperty() venueCity: string;
   @ApiProperty() venueState: string;
   @ApiProperty({ enum: PaymentProvider }) paymentProvider: PaymentProvider;
+  @ApiProperty() cardEnabled: boolean;
 }
 
 export class OrderItemResponse {

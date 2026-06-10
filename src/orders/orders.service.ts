@@ -305,6 +305,12 @@ export class OrdersService {
 
     const event = order.items[0]!.sector!.event!;
 
+    if (dto.method === PaymentMethod.CARD && event.cardEnabled === false) {
+      throw new BadRequestException(
+        'este evento não aceita pagamento por cartão',
+      );
+    }
+
     const checkoutBatches = await this.dataSource
       .getRepository(Batch)
       .find({ where: { id: In(order.items.map((i) => i.batchId)) } });
@@ -763,6 +769,7 @@ export class OrdersService {
         venueCity: event.venue?.city ?? '',
         venueState: event.venue?.state ?? '',
         paymentProvider: event.paymentProvider,
+        cardEnabled: event.cardEnabled,
       },
       items,
       payment,
