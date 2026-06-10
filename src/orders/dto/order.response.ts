@@ -22,6 +22,7 @@ export class OrderItemResponse {
   @ApiProperty() id: string;
   @ApiProperty() sectorId: string;
   @ApiProperty() sectorName: string;
+  @ApiProperty({ nullable: true, type: String }) batchName: string | null;
   @ApiProperty() sectorColorHex: string;
   @ApiProperty() qty: number;
   @ApiProperty() priceCents: number;

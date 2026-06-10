@@ -709,6 +709,7 @@ export class OrdersService {
         id: it.id,
         sectorId: it.sectorId,
         sectorName: s?.name ?? '',
+        batchName: b?.name ?? null,
         sectorColorHex: s?.colorHex ?? '#999999',
         qty: it.qty,
         priceCents: it.priceCents,
