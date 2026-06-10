@@ -143,6 +143,9 @@ export class AbacatePayClient {
   // -------------------------------------------------------------------------
 
   private async call<T>(path: string, body: unknown): Promise<T> {
+    // DIAG TEMPORÁRIO: loga o body exato enviado ao Abacate pra achar o
+    // "Value should be one of object". REMOVER após o diagnóstico.
+    this.logger.log(`AbacatePay v2 ${path} REQUEST: ${JSON.stringify(body)}`);
     let response: Response;
     try {
       response = await fetch(`${BASE_URL}${path}`, {
@@ -160,9 +163,15 @@ export class AbacatePayClient {
       throw new BadRequestException(`AbacatePay error: ${msg}`);
     }
 
+    const rawText = await response.text();
+    // DIAG TEMPORÁRIO: resposta crua completa do Abacate. REMOVER depois.
+    this.logger.log(
+      `AbacatePay v2 ${path} RESPONSE status=${response.status} body=${rawText}`,
+    );
+
     let env: ApiEnvelope<T>;
     try {
-      env = (await response.json()) as ApiEnvelope<T>;
+      env = JSON.parse(rawText) as ApiEnvelope<T>;
     } catch {
       throw new BadRequestException(
         `AbacatePay returned non-JSON (status=${response.status})`,
