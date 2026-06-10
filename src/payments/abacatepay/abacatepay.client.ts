@@ -22,6 +22,7 @@ import {
   PixChargeRequest,
   PixChargeResponse,
 } from './abacatepay.types';
+import { buildPixBody } from './build-pix-body';
 
 const BASE_URL = 'https://api.abacatepay.com/v2';
 
@@ -89,26 +90,7 @@ export class AbacatePayClient {
       `Creating PIX charge: externalId=${req.externalId} amount=${req.amount}`,
     );
 
-    const customerObj =
-      req.customer.name && req.customer.taxId
-        ? {
-            name: req.customer.name,
-            taxId: req.customer.taxId,
-            email: req.customer.email,
-            cellphone: req.customer.cellphone,
-          }
-        : undefined;
-
-    const body = {
-      method: 'PIX',
-      data: {
-        amount: req.amount,
-        expiresIn: req.expiresIn,
-        description: req.description,
-        externalId: req.externalId,
-        ...(customerObj ? { customer: customerObj } : {}),
-      },
-    };
+    const body = buildPixBody(req);
 
     const r = await this.call<ApiPixData>('/transparents/create', body);
     return {
