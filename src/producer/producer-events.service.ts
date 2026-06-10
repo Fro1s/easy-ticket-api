@@ -568,6 +568,7 @@ export class ProducerEventsService {
       .getRepository(Ticket)
       .createQueryBuilder('t')
       .leftJoin('sectors', 's', 's.id = t.sectorId')
+      .leftJoin('batches', 'b', 'b.id = t.batchId')
       .leftJoin('users', 'u', 'u.id = t.userId')
       .where('t.eventId = :eventId', { eventId: detail.id })
       .andWhere(
@@ -582,6 +583,7 @@ export class ProducerEventsService {
         't.status AS "status"',
         't.usedAt AS "usedAt"',
         's.name AS "sectorName"',
+        'b.name AS "batchName"',
         'u.name AS "buyerName"',
         'u.email AS "buyerEmail"',
       ])
@@ -595,6 +597,7 @@ export class ProducerEventsService {
         status: string;
         usedAt: Date | null;
         sectorName: string | null;
+        batchName: string | null;
         buyerName: string | null;
         buyerEmail: string;
       }>();
@@ -607,6 +610,7 @@ export class ProducerEventsService {
       buyerName: r.buyerName,
       buyerEmail: r.buyerEmail,
       sectorName: r.sectorName ?? '',
+      batchName: r.batchName ?? null,
       status: r.status as AttendeeSearchItem['status'],
       usedAt: r.usedAt ? r.usedAt.toISOString() : null,
     }));

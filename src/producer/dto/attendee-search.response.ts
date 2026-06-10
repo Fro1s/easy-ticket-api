@@ -9,6 +9,7 @@ export class AttendeeSearchItem {
   @ApiProperty({ nullable: true, type: String }) buyerName: string | null;
   @ApiProperty() buyerEmail: string;
   @ApiProperty() sectorName: string;
+  @ApiProperty({ nullable: true, type: String }) batchName: string | null;
   @ApiProperty({ enum: TicketStatus }) status: TicketStatus;
   @ApiProperty({ nullable: true, type: String }) usedAt: string | null;
 }
