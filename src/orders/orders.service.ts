@@ -108,6 +108,32 @@ export class OrdersService {
         throw new BadRequestException('event is not on sale');
       }
 
+      // Anti-flood: se o usuário já tem um pedido PENDENTE e ainda válido (não
+      // expirado) para este evento, reusa ele em vez de criar outro. Sem isso,
+      // cada clique em "Ir para pagamento" gerava um pedido novo — a origem do
+      // monte de pendentes órfãos.
+      const existing = await orderRepo
+        .createQueryBuilder('o')
+        .innerJoin('o.items', 'oi')
+        .innerJoin('oi.sector', 's')
+        .where('o.userId = :userId', { userId })
+        .andWhere('o.status = :status', { status: OrderStatus.PENDING })
+        .andWhere('o.reservedUntil > NOW()')
+        .andWhere('s.eventId = :eventId', { eventId: event.id })
+        .orderBy('o.createdAt', 'DESC')
+        .getOne();
+      if (existing) {
+        const full = await orderRepo.findOne({
+          where: { id: existing.id },
+          relations: { items: { sector: { event: { venue: true } } } },
+        });
+        if (full) {
+          const ev = full.items[0]!.sector!.event!;
+          const secs = full.items.map((it) => it.sector!).filter(Boolean);
+          return this.serialize(full, ev, secs);
+        }
+      }
+
       const sectorIds = dto.items.map((it) => it.sectorId);
       if (new Set(sectorIds).size !== sectorIds.length) {
         throw new BadRequestException('duplicate sector in items');
