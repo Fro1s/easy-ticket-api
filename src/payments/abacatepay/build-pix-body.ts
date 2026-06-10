@@ -21,18 +21,19 @@ export interface PixBody {
 /**
  * Monta o corpo do POST /v2/transparents/create.
  *
- * IMPORTANTE: o AbacatePay rejeita o objeto `customer` quando ele contém campos
- * com valor inválido/undefined (erro "Value should be one of 'object'..."). Por
- * isso só incluímos os campos do customer que têm valor de verdade, e omitimos
- * o objeto `customer` inteiro quando não há nenhum dado útil — todos os campos
- * são opcionais na API (só `method` + `data.amount` são obrigatórios).
+ * IMPORTANTE: quando o objeto `customer` está presente, a API v2 exige TODOS os
+ * 4 campos (name, email, taxId, cellphone). Um customer parcial é rejeitado com
+ * o erro genérico "Value should be one of 'object', 'object'". Como `customer`
+ * é totalmente opcional (só `method` + `data.amount` são obrigatórios), a regra
+ * aqui é all-or-nothing: só incluímos o customer se os 4 campos tiverem valor;
+ * caso contrário, omitimos o objeto inteiro.
  */
 export function buildPixBody(req: PixChargeRequest): PixBody {
-  const customer: PixBodyCustomer = {};
-  if (req.customer?.name) customer.name = req.customer.name;
-  if (req.customer?.email) customer.email = req.customer.email;
-  if (req.customer?.taxId) customer.taxId = req.customer.taxId;
-  if (req.customer?.cellphone) customer.cellphone = req.customer.cellphone;
+  const { name, email, taxId, cellphone } = req.customer ?? {};
+  const hasFullCustomer = Boolean(name && email && taxId && cellphone);
+  const customer: PixBodyCustomer | undefined = hasFullCustomer
+    ? { name, email, taxId, cellphone }
+    : undefined;
 
   return {
     method: 'PIX',
@@ -44,7 +45,7 @@ export function buildPixBody(req: PixChargeRequest): PixBody {
       // pedido vai em metadata.pedidoId. O mapeamento charge.id -> order é feito
       // via o `id` retornado (persistido no paymentCache/order.paymentId).
       metadata: { pedidoId: req.externalId },
-      ...(Object.keys(customer).length > 0 ? { customer } : {}),
+      ...(customer ? { customer } : {}),
     },
   };
 }
