@@ -17,4 +17,7 @@ export class AttendeeSearchItem {
 export class AttendeeSearchResponse {
   @ApiProperty({ type: [AttendeeSearchItem] })
   items: AttendeeSearchItem[];
+  @ApiProperty() total: number;
+  @ApiProperty() page: number;
+  @ApiProperty() pageSize: number;
 }
