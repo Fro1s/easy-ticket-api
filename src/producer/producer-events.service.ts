@@ -598,6 +598,8 @@ export class ProducerEventsService {
         'u.email AS "buyerEmail"',
       ])
       // Válidos (e demais status) no topo; USED agrupados no fim.
+      // O ORDER BY pelo alias "usedOrder" só é válido porque usamos getRawMany
+      // (o alias está no SELECT projetado). Um refactor para getMany quebraria isto.
       .addSelect(`CASE WHEN t.status = 'USED' THEN 1 ELSE 0 END`, 'usedOrder')
       .orderBy('"usedOrder"', 'ASC')
       .addOrderBy('t.createdAt', 'DESC')
