@@ -1,3 +1,6 @@
+// Imported from the lib (not ./events.service) because importing the service
+// pulls the TypeORM entity chain → @paralleldrive/cuid2 (ESM) → crashes Jest.
+// events.service re-exports buildSectorView, so the public contract still holds.
 import { buildSectorView } from './lib/sector-view';
 import { BatchSnapshot } from './lib/active-batch';
 

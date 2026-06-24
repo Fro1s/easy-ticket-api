@@ -13,9 +13,10 @@ import {
 } from './dto/event.response';
 import { ListEventsQuery } from './dto/list-events.query';
 import { resolveActiveBatch, BatchSnapshot } from './lib/active-batch';
-import { buildSectorView, openComboBatches, toBatchInfo } from './lib/sector-view';
+import { buildSectorView } from './lib/sector-view';
 
-export { buildSectorView } from './lib/sector-view';
+// Re-exported so consumers can import buildSectorView from the service surface.
+export { buildSectorView };
 
 function toBatchSnapshot(b: Batch): BatchSnapshot {
   return {
@@ -184,9 +185,6 @@ export class EventsService {
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((s) => {
           const snapshots = publicBatches(s).map(toBatchSnapshot);
-          const avulsoSnapshots = snapshots.filter((b) => b.ticketsPerUnit <= 1);
-          const { active, next } = resolveActiveBatch(avulsoSnapshots, now);
-          const combos = openComboBatches(snapshots, now);
           return {
             id: s.id,
             name: s.name,
@@ -195,9 +193,7 @@ export class EventsService {
             sold: sumPublicBatches(s, 'sold'),
             reserved: sumPublicBatches(s, 'reserved'),
             sortOrder: s.sortOrder,
-            activeBatch: active ? toBatchInfo(active) : null,
-            nextBatch: next ? toBatchInfo(next) : null,
-            comboBatches: combos.map(toBatchInfo),
+            ...buildSectorView({ id: s.id, name: s.name, colorHex: s.colorHex, sortOrder: s.sortOrder }, snapshots, now),
           };
         }),
     };
