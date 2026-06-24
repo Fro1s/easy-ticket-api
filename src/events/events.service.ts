@@ -13,6 +13,9 @@ import {
 } from './dto/event.response';
 import { ListEventsQuery } from './dto/list-events.query';
 import { resolveActiveBatch, BatchSnapshot } from './lib/active-batch';
+import { buildSectorView, openComboBatches, toBatchInfo } from './lib/sector-view';
+
+export { buildSectorView } from './lib/sector-view';
 
 function toBatchSnapshot(b: Batch): BatchSnapshot {
   return {
@@ -180,10 +183,10 @@ export class EventsService {
       sectors: event.sectors
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((s) => {
-          const { active, next } = resolveActiveBatch(
-            publicBatches(s).map(toBatchSnapshot),
-            now,
-          );
+          const snapshots = publicBatches(s).map(toBatchSnapshot);
+          const avulsoSnapshots = snapshots.filter((b) => b.ticketsPerUnit <= 1);
+          const { active, next } = resolveActiveBatch(avulsoSnapshots, now);
+          const combos = openComboBatches(snapshots, now);
           return {
             id: s.id,
             name: s.name,
@@ -192,26 +195,9 @@ export class EventsService {
             sold: sumPublicBatches(s, 'sold'),
             reserved: sumPublicBatches(s, 'reserved'),
             sortOrder: s.sortOrder,
-            activeBatch: active
-              ? {
-                  id: active.id,
-                  name: active.name,
-                  priceCents: active.priceCents,
-                  ticketsPerUnit: active.ticketsPerUnit ?? 1,
-                  startsAt: active.startsAt?.toISOString() ?? null,
-                  endsAt: active.endsAt?.toISOString() ?? null,
-                }
-              : null,
-            nextBatch: next
-              ? {
-                  id: next.id,
-                  name: next.name,
-                  priceCents: next.priceCents,
-                  ticketsPerUnit: next.ticketsPerUnit ?? 1,
-                  startsAt: next.startsAt?.toISOString() ?? null,
-                  endsAt: next.endsAt?.toISOString() ?? null,
-                }
-              : null,
+            activeBatch: active ? toBatchInfo(active) : null,
+            nextBatch: next ? toBatchInfo(next) : null,
+            comboBatches: combos.map(toBatchInfo),
           };
         }),
     };
