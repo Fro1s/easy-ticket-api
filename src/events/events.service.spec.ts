@@ -37,4 +37,13 @@ describe('buildSectorView', () => {
     const v = buildSectorView(sec, [mk({ id: 'combo', ticketsPerUnit: 3, endsAt: new Date('2026-04-01T00:00:00Z') })], at);
     expect(v.comboBatches).toEqual([]);
   });
+
+  it('available reflete o estoque do próprio batch, independente entre lote e combo', () => {
+    const v = buildSectorView(sec, [
+      mk({ id: 'avulso', ticketsPerUnit: 1, sortOrder: 1, capacity: 25, sold: 24, reserved: 0 }),
+      mk({ id: 'combo', ticketsPerUnit: 3, sortOrder: 0, capacity: 5, sold: 2, reserved: 0 }),
+    ], at);
+    expect(v.activeBatch?.available).toBe(1);
+    expect(v.comboBatches[0]?.available).toBe(3);
+  });
 });

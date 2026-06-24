@@ -10,6 +10,7 @@ export function toBatchInfo(b: BatchSnapshot) {
     name: b.name,
     priceCents: b.priceCents,
     ticketsPerUnit: b.ticketsPerUnit ?? 1,
+    available: Math.max(0, b.capacity - b.sold - b.reserved),
     startsAt: b.startsAt?.toISOString() ?? null,
     endsAt: b.endsAt?.toISOString() ?? null,
   };
