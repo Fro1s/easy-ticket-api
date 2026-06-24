@@ -1,7 +1,7 @@
 // Imported from the lib (not ./events.service) because importing the service
 // pulls the TypeORM entity chain → @paralleldrive/cuid2 (ESM) → crashes Jest.
 // events.service re-exports buildSectorView, so the public contract still holds.
-import { buildSectorView } from './lib/sector-view';
+import { buildSectorView, resolveActiveAvulso } from './lib/sector-view';
 import { BatchSnapshot } from './lib/active-batch';
 
 const at = new Date('2026-05-01T12:00:00Z');
@@ -45,5 +45,26 @@ describe('buildSectorView', () => {
     ], at);
     expect(v.activeBatch?.available).toBe(1);
     expect(v.comboBatches[0]?.available).toBe(3);
+  });
+});
+
+describe('resolveActiveAvulso', () => {
+  // Regressão: combo com sortOrder menor não deve "vencer" o lote avulso.
+  // Era o que fazia o availability live retornar o estoque do combo (3) no
+  // lugar do lote único (1).
+  it('ignora combos e escolhe o lote avulso ativo mesmo com sortOrder maior', () => {
+    const { active } = resolveActiveAvulso([
+      mk({ id: 'combo', ticketsPerUnit: 3, sortOrder: 0, capacity: 5, sold: 2 }),
+      mk({ id: 'avulso', ticketsPerUnit: 1, sortOrder: 4, capacity: 25, sold: 24 }),
+    ], at);
+    expect(active?.id).toBe('avulso');
+    expect(active && active.capacity - active.sold - active.reserved).toBe(1);
+  });
+
+  it('sem lote avulso (só combo): active null', () => {
+    const { active } = resolveActiveAvulso([
+      mk({ id: 'combo', ticketsPerUnit: 3, sortOrder: 0 }),
+    ], at);
+    expect(active).toBeNull();
   });
 });

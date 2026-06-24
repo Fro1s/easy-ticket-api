@@ -16,13 +16,20 @@ export function toBatchInfo(b: BatchSnapshot) {
   };
 }
 
+// Resolve o lote AVULSO (ticketsPerUnit <= 1) ativo. Combos (tpu > 1) nunca
+// entram aqui — eles são ofertas paralelas com estoque próprio e não devem ser
+// confundidos com o lote individual ativo do setor.
+export function resolveActiveAvulso(snapshots: BatchSnapshot[], at: Date) {
+  const avulso = snapshots.filter((b) => b.ticketsPerUnit <= 1);
+  return resolveActiveBatch(avulso, at);
+}
+
 export function buildSectorView(
   sector: { id: string; name: string; colorHex: string; sortOrder: number },
   snapshots: BatchSnapshot[],
   at: Date,
 ) {
-  const avulso = snapshots.filter((b) => b.ticketsPerUnit <= 1);
-  const { active, next } = resolveActiveBatch(avulso, at);
+  const { active, next } = resolveActiveAvulso(snapshots, at);
   return {
     activeBatch: active ? toBatchInfo(active) : null,
     nextBatch: next ? toBatchInfo(next) : null,

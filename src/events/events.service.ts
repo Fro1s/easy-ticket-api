@@ -12,8 +12,8 @@ import {
   EventSummary,
 } from './dto/event.response';
 import { ListEventsQuery } from './dto/list-events.query';
-import { resolveActiveBatch, BatchSnapshot } from './lib/active-batch';
-import { buildSectorView } from './lib/sector-view';
+import { BatchSnapshot } from './lib/active-batch';
+import { buildSectorView, resolveActiveAvulso } from './lib/sector-view';
 
 // Re-exported so consumers can import buildSectorView from the service surface.
 export { buildSectorView };
@@ -120,7 +120,7 @@ export class EventsService {
       sectors: event.sectors
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((s) => {
-          const { active } = resolveActiveBatch(
+          const { active } = resolveActiveAvulso(
             publicBatches(s).map(toBatchSnapshot),
             now,
           );
@@ -144,7 +144,7 @@ export class EventsService {
     const now = new Date();
     const activeBatchPrices: number[] = [];
     for (const s of event.sectors ?? []) {
-      const { active } = resolveActiveBatch(
+      const { active } = resolveActiveAvulso(
         publicBatches(s).map(toBatchSnapshot),
         now,
       );
