@@ -50,3 +50,38 @@ describe('validateAttendees', () => {
     ).not.toThrow();
   });
 });
+
+describe('validateAttendees — requireEmail', () => {
+  const five = (email: string | null) =>
+    Array.from({ length: 5 }, () => ({ name: 'Ana Silva', email }));
+
+  it('requireEmail=true rejeita email vazio', () => {
+    expect(() =>
+      validateAttendees({ qty: 1, ticketsPerUnit: 5, attendees: five(''), requireEmail: true }),
+    ).toThrow(/email/i);
+  });
+
+  it('requireEmail=true rejeita email null', () => {
+    expect(() =>
+      validateAttendees({ qty: 1, ticketsPerUnit: 5, attendees: five(null), requireEmail: true }),
+    ).toThrow(/email/i);
+  });
+
+  it('requireEmail=true aceita todos com email válido', () => {
+    expect(() =>
+      validateAttendees({ qty: 1, ticketsPerUnit: 5, attendees: five('a@x.com'), requireEmail: true }),
+    ).not.toThrow();
+  });
+
+  it('requireEmail=true permite emails repetidos', () => {
+    expect(() =>
+      validateAttendees({ qty: 1, ticketsPerUnit: 5, attendees: five('mesmo@x.com'), requireEmail: true }),
+    ).not.toThrow();
+  });
+
+  it('requireEmail ausente (default) mantém email opcional', () => {
+    expect(() =>
+      validateAttendees({ qty: 1, ticketsPerUnit: 5, attendees: five(null) }),
+    ).not.toThrow();
+  });
+});
