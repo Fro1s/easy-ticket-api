@@ -22,6 +22,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { CheckoutOrderDto } from './dto/checkout-order.dto';
 import { UpdateOrderAttendeesDto } from './dto/attendee.dto';
 import { validateAttendees } from './lib/validate-attendees';
+import { existingOrderMatchesRequest } from './lib/order-reuse';
 import {
   ConfirmedOrderResponse,
   OrderResponse,
@@ -128,9 +129,31 @@ export class OrdersService {
           relations: { items: { sector: { event: { venue: true } } } },
         });
         if (full) {
-          const ev = full.items[0]!.sector!.event!;
-          const secs = full.items.map((it) => it.sector!).filter(Boolean);
-          return this.serialize(full, ev, secs);
+          // Só reusa se o pedido pendente representa a MESMA seleção (mesmo
+          // lote/combo). Se o usuário trocou (ex.: avulso → combo), o pedido
+          // antigo é cancelado para liberar a reserva e seguimos criando o novo.
+          const existingBatches = await mgr.getRepository(Batch).find({
+            where: { id: In(full.items.map((it) => it.batchId)) },
+          });
+          const tpuByBatchId = new Map(
+            existingBatches.map((b) => [b.id, b.ticketsPerUnit ?? 1]),
+          );
+          const matches = existingOrderMatchesRequest(
+            full.items.map((it) => ({
+              batchId: it.batchId,
+              ticketsPerUnit: tpuByBatchId.get(it.batchId) ?? 1,
+            })),
+            dto.items.map((it) => ({
+              sectorId: it.sectorId,
+              batchId: it.batchId,
+            })),
+          );
+          if (matches) {
+            const ev = full.items[0]!.sector!.event!;
+            const secs = full.items.map((it) => it.sector!).filter(Boolean);
+            return this.serialize(full, ev, secs);
+          }
+          await this.cancelPendingOrderTx(mgr, full);
         }
       }
 
@@ -681,6 +704,57 @@ export class OrdersService {
       }
     }
     return sent;
+  }
+
+  /**
+   * Cancela um pedido PENDENTE dentro de uma transação já aberta (`mgr`),
+   * liberando a reserva de setor/lote. Usado pelo anti-flood de `create`
+   * quando o usuário troca de lote/combo: o pedido antigo é descartado e a
+   * reserva volta a ficar disponível para o pedido novo na mesma transação.
+   */
+  private async cancelPendingOrderTx(
+    mgr: EntityManager,
+    order: Order,
+  ): Promise<void> {
+    const orderRepo = mgr.getRepository(Order);
+    const fresh = await orderRepo.findOne({
+      where: { id: order.id },
+      relations: { items: true },
+    });
+    if (!fresh || fresh.status !== OrderStatus.PENDING) return;
+
+    const sectorIds = fresh.items.map((it) => it.sectorId);
+    const sectors = await mgr
+      .getRepository(Sector)
+      .createQueryBuilder('s')
+      .setLock('pessimistic_write')
+      .where('s.id IN (:...ids)', { ids: sectorIds })
+      .getMany();
+    const bySectorId = new Map(sectors.map((s) => [s.id, s]));
+    for (const it of fresh.items) {
+      const s = bySectorId.get(it.sectorId);
+      if (s) s.reserved = Math.max(0, s.reserved - it.qty);
+    }
+    await mgr.getRepository(Sector).save(sectors);
+
+    const batchIds = fresh.items.map((it) => it.batchId);
+    const batchesToRelease = await mgr
+      .getRepository(Batch)
+      .createQueryBuilder('b')
+      .setLock('pessimistic_write')
+      .where('b.id IN (:...ids)', { ids: batchIds })
+      .getMany();
+    const byBatchId = new Map(batchesToRelease.map((b) => [b.id, b]));
+    for (const it of fresh.items) {
+      const b = byBatchId.get(it.batchId);
+      if (b) b.reserved = Math.max(0, b.reserved - it.qty);
+    }
+    await mgr.getRepository(Batch).save(batchesToRelease);
+
+    fresh.status = OrderStatus.EXPIRED;
+    await orderRepo.save(fresh);
+    paymentCache.delete(fresh.id);
+    this.stream.notify(fresh.id, OrderStatus.EXPIRED);
   }
 
   private async expireIfStale(order: Order): Promise<void> {
