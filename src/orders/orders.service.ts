@@ -317,7 +317,7 @@ export class OrdersService {
         validateAttendees({
           qty: item.qty,
           ticketsPerUnit: batch.ticketsPerUnit,
-          attendees: incoming.map((a) => ({ name: a.name, email: a.email ?? null })),
+          attendees: normalized,
           requireEmail: (batch.ticketsPerUnit ?? 1) > 1,
         });
         item.attendees = normalized;
