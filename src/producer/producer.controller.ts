@@ -36,6 +36,7 @@ import { AttendeeSearchResponse } from './dto/attendee-search.response';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { CreateEventDto } from './dto/create-event.dto';
 import { ListProducerOrdersQuery } from './dto/list-orders.query';
+import { SearchAttendeesQuery } from './dto/search-attendees.query';
 import { ProducerOrdersResponse } from './dto/producer-order.response';
 import {
   ProducerDashboardResponse,
@@ -151,9 +152,9 @@ export class ProducerController {
   searchAttendees(
     @CurrentUser() user: AuthenticatedUser,
     @Param('slug') slug: string,
-    @Query('q') q: string,
+    @Query() query: SearchAttendeesQuery,
   ): Promise<AttendeeSearchResponse> {
-    return this.events.searchAttendees(user, slug, q ?? '');
+    return this.events.searchAttendees(user, slug, query);
   }
 
   @Post('events/:id/sell-by-email')

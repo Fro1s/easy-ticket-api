@@ -1,10 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsInt,
+  IsOptional,
   IsString,
   Max,
   Min,
@@ -21,6 +22,11 @@ export class CreateOrderItemDto {
   @Min(1)
   @Max(2)
   qty: number;
+
+  @ApiPropertyOptional({ description: 'Lote específico (combo). Se ausente, resolve o avulso ativo.' })
+  @IsOptional()
+  @IsString()
+  batchId?: string;
 }
 
 export class CreateOrderDto {

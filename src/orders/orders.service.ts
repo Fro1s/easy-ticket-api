@@ -15,7 +15,7 @@ import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { Sector } from '../events/entities/sector.entity';
 import { Batch } from '../events/entities/batch.entity';
-import { resolveActiveBatch } from '../events/lib/active-batch';
+import { resolveActiveBatch, isBatchOpen } from '../events/lib/active-batch';
 import { Event } from '../events/entities/event.entity';
 import { Ticket } from '../tickets/entities/ticket.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -181,28 +181,40 @@ export class OrdersService {
       for (const item of dto.items) {
         const sector = bySectorId.get(item.sectorId)!;
         const sectorBatches = batchesBySector.get(sector.id) ?? [];
-        const { active } = resolveActiveBatch(
-          sectorBatches.map((b) => ({
-            id: b.id,
-            name: b.name,
-            priceCents: b.priceCents,
-            ticketsPerUnit: b.ticketsPerUnit ?? 1,
-            capacity: b.capacity,
-            sold: b.sold,
-            reserved: b.reserved,
-            sortOrder: b.sortOrder,
-            startsAt: b.startsAt,
-            endsAt: b.endsAt,
-            isActive: b.isActive,
-          })),
-          now,
-        );
-        if (!active) {
-          throw new ConflictException(
-            `setor ${sector.name} sem lote disponível`,
+        const snapshots = sectorBatches.map((b) => ({
+          id: b.id, name: b.name, priceCents: b.priceCents,
+          ticketsPerUnit: b.ticketsPerUnit ?? 1, capacity: b.capacity,
+          sold: b.sold, reserved: b.reserved, sortOrder: b.sortOrder,
+          startsAt: b.startsAt, endsAt: b.endsAt, isActive: b.isActive,
+        }));
+
+        let batch: Batch;
+        if (item.batchId) {
+          const chosen = sectorBatches.find((b) => b.id === item.batchId);
+          if (!chosen) {
+            throw new BadRequestException('lote não pertence ao setor');
+          }
+          const snap = snapshots.find((s) => s.id === chosen.id)!;
+          if (!isBatchOpen(snap, now)) {
+            throw new ConflictException(`lote ${chosen.name} indisponível`);
+          }
+          batch = chosen;
+        } else {
+          const { active } = resolveActiveBatch(
+            snapshots.filter((s) => s.ticketsPerUnit <= 1),
+            now,
           );
+          if (!active) {
+            throw new ConflictException(`setor ${sector.name} sem lote disponível`);
+          }
+          batch = sectorBatches.find((b) => b.id === active.id)!;
         }
-        const batch = sectorBatches.find((b) => b.id === active.id)!;
+
+        const tpu = batch.ticketsPerUnit ?? 1;
+        if (tpu > 1 && item.qty > 1) {
+          throw new BadRequestException('máximo de 1 combo por pedido');
+        }
+
         const available = batch.capacity - batch.sold - batch.reserved;
         if (available < item.qty) {
           throw new ConflictException(
@@ -306,6 +318,7 @@ export class OrdersService {
           qty: item.qty,
           ticketsPerUnit: batch.ticketsPerUnit,
           attendees: normalized,
+          requireEmail: (batch.ticketsPerUnit ?? 1) > 1,
         });
         item.attendees = normalized;
         await mgr.getRepository(OrderItem).save(item);

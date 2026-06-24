@@ -24,10 +24,12 @@ import { UsersService } from '../users/users.service';
 import { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
 import { CreateEventDto } from './dto/create-event.dto';
 import { resolveCreateProducerId } from './lib/resolve-create-producer-id';
+import { normalizeAttendeeSearch } from './lib/normalize-attendee-search';
 import {
   AttendeeSearchItem,
   AttendeeSearchResponse,
 } from './dto/attendee-search.response';
+import { SearchAttendeesQuery } from './dto/search-attendees.query';
 import { ListProducerOrdersQuery } from './dto/list-orders.query';
 import {
   ProducerOrderItem,
@@ -557,24 +559,32 @@ export class ProducerEventsService {
   async searchAttendees(
     currentUser: AuthenticatedUser,
     eventSlug: string,
-    q: string,
+    query: SearchAttendeesQuery,
   ): Promise<AttendeeSearchResponse> {
     const detail = await this.getBySlug(currentUser, eventSlug);
-    const term = (q ?? '').trim();
-    if (term.length < 2) return { items: [] };
-    const like = `%${term}%`;
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const { term } = normalizeAttendeeSearch(query.q);
 
-    const rows = await this.dataSource
+    const base = this.dataSource
       .getRepository(Ticket)
       .createQueryBuilder('t')
       .leftJoin('sectors', 's', 's.id = t.sectorId')
       .leftJoin('batches', 'b', 'b.id = t.batchId')
       .leftJoin('users', 'u', 'u.id = t.userId')
-      .where('t.eventId = :eventId', { eventId: detail.id })
-      .andWhere(
+      .where('t.eventId = :eventId', { eventId: detail.id });
+
+    if (term) {
+      base.andWhere(
         '(u.email ILIKE :like OR u.name ILIKE :like OR t.holderName ILIKE :like OR t.holderEmail ILIKE :like OR t.shortCode ILIKE :like)',
-        { like },
-      )
+        { like: `%${term}%` },
+      );
+    }
+
+    const total = await base.clone().getCount();
+
+    const rows = await base
+      .clone()
       .select([
         't.id AS "ticketId"',
         't.shortCode AS "shortCode"',
@@ -587,8 +597,14 @@ export class ProducerEventsService {
         'u.name AS "buyerName"',
         'u.email AS "buyerEmail"',
       ])
-      .orderBy('t.createdAt', 'DESC')
-      .limit(50)
+      // Válidos (e demais status) no topo; USED agrupados no fim.
+      // O ORDER BY pelo alias "usedOrder" só é válido porque usamos getRawMany
+      // (o alias está no SELECT projetado). Um refactor para getMany quebraria isto.
+      .addSelect(`CASE WHEN t.status = 'USED' THEN 1 ELSE 0 END`, 'usedOrder')
+      .orderBy('"usedOrder"', 'ASC')
+      .addOrderBy('t.createdAt', 'DESC')
+      .offset((page - 1) * pageSize)
+      .limit(pageSize)
       .getRawMany<{
         ticketId: string;
         shortCode: string;
@@ -614,7 +630,8 @@ export class ProducerEventsService {
       status: r.status as AttendeeSearchItem['status'],
       usedAt: r.usedAt ? r.usedAt.toISOString() : null,
     }));
-    return { items };
+
+    return { items, total, page, pageSize };
   }
 
   private toSummary(

@@ -1,0 +1,30 @@
+import { resolveActiveBatch, BatchSnapshot, isBatchOpen } from './active-batch';
+
+export function openComboBatches(snapshots: BatchSnapshot[], at: Date): BatchSnapshot[] {
+  return snapshots.filter((b) => b.ticketsPerUnit > 1 && isBatchOpen(b, at));
+}
+
+export function toBatchInfo(b: BatchSnapshot) {
+  return {
+    id: b.id,
+    name: b.name,
+    priceCents: b.priceCents,
+    ticketsPerUnit: b.ticketsPerUnit ?? 1,
+    startsAt: b.startsAt?.toISOString() ?? null,
+    endsAt: b.endsAt?.toISOString() ?? null,
+  };
+}
+
+export function buildSectorView(
+  sector: { id: string; name: string; colorHex: string; sortOrder: number },
+  snapshots: BatchSnapshot[],
+  at: Date,
+) {
+  const avulso = snapshots.filter((b) => b.ticketsPerUnit <= 1);
+  const { active, next } = resolveActiveBatch(avulso, at);
+  return {
+    activeBatch: active ? toBatchInfo(active) : null,
+    nextBatch: next ? toBatchInfo(next) : null,
+    comboBatches: openComboBatches(snapshots, at).map(toBatchInfo),
+  };
+}

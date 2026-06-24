@@ -17,7 +17,7 @@ export interface ActiveBatchResult {
   next: BatchSnapshot | null;
 }
 
-function isOpen(b: BatchSnapshot, at: Date): boolean {
+export function isBatchOpen(b: BatchSnapshot, at: Date): boolean {
   if (!b.isActive) return false;
   if (b.sold + b.reserved >= b.capacity) return false;
   if (b.startsAt && b.startsAt > at) return false;
@@ -31,7 +31,7 @@ export function resolveActiveBatch(
 ): ActiveBatchResult {
   if (!batches.length) return { active: null, next: null };
   const sorted = batches.slice().sort((a, b) => a.sortOrder - b.sortOrder);
-  const active = sorted.find((b) => isOpen(b, at)) ?? null;
+  const active = sorted.find((b) => isBatchOpen(b, at)) ?? null;
   const next = active
     ? sorted.find(
         (b) =>

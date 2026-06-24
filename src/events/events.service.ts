@@ -13,6 +13,10 @@ import {
 } from './dto/event.response';
 import { ListEventsQuery } from './dto/list-events.query';
 import { resolveActiveBatch, BatchSnapshot } from './lib/active-batch';
+import { buildSectorView } from './lib/sector-view';
+
+// Re-exported so consumers can import buildSectorView from the service surface.
+export { buildSectorView };
 
 function toBatchSnapshot(b: Batch): BatchSnapshot {
   return {
@@ -180,10 +184,7 @@ export class EventsService {
       sectors: event.sectors
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((s) => {
-          const { active, next } = resolveActiveBatch(
-            publicBatches(s).map(toBatchSnapshot),
-            now,
-          );
+          const snapshots = publicBatches(s).map(toBatchSnapshot);
           return {
             id: s.id,
             name: s.name,
@@ -192,26 +193,7 @@ export class EventsService {
             sold: sumPublicBatches(s, 'sold'),
             reserved: sumPublicBatches(s, 'reserved'),
             sortOrder: s.sortOrder,
-            activeBatch: active
-              ? {
-                  id: active.id,
-                  name: active.name,
-                  priceCents: active.priceCents,
-                  ticketsPerUnit: active.ticketsPerUnit ?? 1,
-                  startsAt: active.startsAt?.toISOString() ?? null,
-                  endsAt: active.endsAt?.toISOString() ?? null,
-                }
-              : null,
-            nextBatch: next
-              ? {
-                  id: next.id,
-                  name: next.name,
-                  priceCents: next.priceCents,
-                  ticketsPerUnit: next.ticketsPerUnit ?? 1,
-                  startsAt: next.startsAt?.toISOString() ?? null,
-                  endsAt: next.endsAt?.toISOString() ?? null,
-                }
-              : null,
+            ...buildSectorView({ id: s.id, name: s.name, colorHex: s.colorHex, sortOrder: s.sortOrder }, snapshots, now),
           };
         }),
     };

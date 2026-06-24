@@ -8,8 +8,9 @@ export function validateAttendees(input: {
   qty: number;
   ticketsPerUnit: number;
   attendees: AttendeeInput[] | null;
+  requireEmail?: boolean;
 }): void {
-  const { qty, ticketsPerUnit, attendees } = input;
+  const { qty, ticketsPerUnit, attendees, requireEmail = false } = input;
   if (ticketsPerUnit <= 1) return;
 
   const expected = qty * ticketsPerUnit;
@@ -26,7 +27,11 @@ export function validateAttendees(input: {
     if (!a?.name || a.name.trim().length < 2) {
       throw new BadRequestException(`attendees[${i}].name inválido`);
     }
-    if (a.email != null && a.email !== '' && !EMAIL_RE.test(a.email)) {
+    const emailEmpty = a.email == null || a.email === '';
+    if (requireEmail && emailEmpty) {
+      throw new BadRequestException(`attendees[${i}].email obrigatório`);
+    }
+    if (!emailEmpty && !EMAIL_RE.test(a.email!)) {
       throw new BadRequestException(`attendees[${i}].email inválido`);
     }
   }
