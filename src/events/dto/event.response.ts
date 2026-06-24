@@ -23,6 +23,8 @@ export class SectorResponse {
   activeBatch: EventBatchInfo | null;
   @ApiProperty({ type: EventBatchInfo, nullable: true })
   nextBatch: EventBatchInfo | null;
+  @ApiProperty({ type: [EventBatchInfo] })
+  comboBatches: EventBatchInfo[];
 }
 
 export class VenueSummary {
