@@ -54,60 +54,72 @@ async function main() {
   await repos.producer.createQueryBuilder().delete().execute();
 
   console.log('[seed] producer: Projeto Criança Feliz');
-  const pcf = await repos.producer.save(repos.producer.create({
-    name: PCF_PRODUCER_NAME,
-    cnpj: null,
-    absorbFee: false,
-  }));
+  const pcf = await repos.producer.save(
+    repos.producer.create({
+      name: PCF_PRODUCER_NAME,
+      cnpj: null,
+      absorbFee: false,
+    }),
+  );
 
   console.log('[seed] users');
   const adminHash = await argon2.hash(PCF_PASSWORD);
   const masterHash = await argon2.hash(PCF_PASSWORD);
   const staffHash = await argon2.hash(PCF_PASSWORD);
 
-  await repos.user.save(repos.user.create({
-    email: 'admin@easyticket.com.br',
-    name: 'Easy Ticket Admin',
-    role: Role.ADMIN,
-    passwordHash: adminHash,
-    referralCode: createId().slice(0, 10).toUpperCase(),
-    cpf: null,
-    phone: null,
-    producerId: null,
-  }));
+  await repos.user.save(
+    repos.user.create({
+      email: 'admin@easyticket.com.br',
+      name: 'Easy Ticket Admin',
+      role: Role.ADMIN,
+      passwordHash: adminHash,
+      referralCode: createId().slice(0, 10).toUpperCase(),
+      cpf: null,
+      phone: null,
+      producerId: null,
+    }),
+  );
 
-  await repos.user.save(repos.user.create({
-    email: 'matheus.frois@projetocriancafeliz.org',
-    name: 'Matheus Frois',
-    role: Role.PRODUCER,
-    passwordHash: masterHash,
-    referralCode: createId().slice(0, 10).toUpperCase(),
-    cpf: null,
-    phone: null,
-    producerId: pcf.id,
-  }));
-  await repos.user.save(repos.user.create({
-    email: 'leticia.silveira@projetocriancafeliz.org',
-    name: 'Letícia Silveira',
-    role: Role.PRODUCER,
-    passwordHash: masterHash,
-    referralCode: createId().slice(0, 10).toUpperCase(),
-    cpf: null,
-    phone: null,
-    producerId: pcf.id,
-  }));
-  await repos.user.save(repos.user.create({
-    email: 'vendedor@projetocriancafeliz.org',
-    name: 'Vendedor PCF',
-    role: Role.STAFF,
-    passwordHash: staffHash,
-    referralCode: createId().slice(0, 10).toUpperCase(),
-    cpf: null,
-    phone: null,
-    producerId: pcf.id,
-  }));
+  await repos.user.save(
+    repos.user.create({
+      email: 'matheus.frois@projetocriancafeliz.org',
+      name: 'Matheus Frois',
+      role: Role.PRODUCER,
+      passwordHash: masterHash,
+      referralCode: createId().slice(0, 10).toUpperCase(),
+      cpf: null,
+      phone: null,
+      producerId: pcf.id,
+    }),
+  );
+  await repos.user.save(
+    repos.user.create({
+      email: 'leticia.silveira@projetocriancafeliz.org',
+      name: 'Letícia Silveira',
+      role: Role.PRODUCER,
+      passwordHash: masterHash,
+      referralCode: createId().slice(0, 10).toUpperCase(),
+      cpf: null,
+      phone: null,
+      producerId: pcf.id,
+    }),
+  );
+  await repos.user.save(
+    repos.user.create({
+      email: 'vendedor@projetocriancafeliz.org',
+      name: 'Vendedor PCF',
+      role: Role.STAFF,
+      passwordHash: staffHash,
+      referralCode: createId().slice(0, 10).toUpperCase(),
+      cpf: null,
+      phone: null,
+      producerId: pcf.id,
+    }),
+  );
 
-  console.log('[seed] done — baseline production: 1 producer, 4 users, 0 events');
+  console.log(
+    '[seed] done — baseline production: 1 producer, 4 users, 0 events',
+  );
   console.log('[seed] login com qualquer usuário do PCF: senha = pcf2026!');
   await dataSource.destroy();
 }

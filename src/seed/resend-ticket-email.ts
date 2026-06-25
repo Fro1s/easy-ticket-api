@@ -56,7 +56,9 @@ async function main() {
   if (!order) {
     throw new Error(`no PAID order found for user ${user.id}`);
   }
-  console.log(`[resend] order ${order.id} paidAt=${order.paidAt?.toISOString()}`);
+  console.log(
+    `[resend] order ${order.id} paidAt=${order.paidAt?.toISOString()}`,
+  );
 
   const items = await ds
     .getRepository(OrderItem)
@@ -81,8 +83,10 @@ async function main() {
     .getMany();
   const bySectorId = new Map(sectors.map((s) => [s.id, s]));
 
-  const eventId = sectors[0]!.eventId;
-  const event = await ds.getRepository(Event).findOne({ where: { id: eventId } });
+  const eventId = sectors[0].eventId;
+  const event = await ds
+    .getRepository(Event)
+    .findOne({ where: { id: eventId } });
   if (!event) throw new Error(`event ${eventId} not found`);
   const venue = event.venueId
     ? await ds.getRepository(Venue).findOne({ where: { id: event.venueId } })
@@ -121,7 +125,7 @@ async function main() {
     const toAddress = isBuyer ? user.email : destEmail;
     const greetingName = isBuyer
       ? firstName
-      : group[0]?.holderName?.split(/\s+/)[0] ?? null;
+      : (group[0]?.holderName?.split(/\s+/)[0] ?? null);
 
     const payload = {
       to: toAddress,
@@ -144,7 +148,9 @@ async function main() {
     const inlined = withInlineQrAttachments(payload);
     const html = renderTicketEmail(inlined.payload);
 
-    console.log(`[resend] sending to ${toAddress} (${ticketsForEmail.length} ticket(s))`);
+    console.log(
+      `[resend] sending to ${toAddress} (${ticketsForEmail.length} ticket(s))`,
+    );
     const result = await resend.emails.send({
       from,
       to: toAddress,

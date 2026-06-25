@@ -193,7 +193,16 @@ export class EventsService {
             sold: sumPublicBatches(s, 'sold'),
             reserved: sumPublicBatches(s, 'reserved'),
             sortOrder: s.sortOrder,
-            ...buildSectorView({ id: s.id, name: s.name, colorHex: s.colorHex, sortOrder: s.sortOrder }, snapshots, now),
+            ...buildSectorView(
+              {
+                id: s.id,
+                name: s.name,
+                colorHex: s.colorHex,
+                sortOrder: s.sortOrder,
+              },
+              snapshots,
+              now,
+            ),
           };
         }),
     };

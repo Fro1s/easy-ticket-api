@@ -7,7 +7,9 @@ export class EventBatchInfo {
   @ApiProperty() name: string;
   @ApiProperty() priceCents: number;
   @ApiProperty() ticketsPerUnit: number;
-  @ApiProperty({ description: 'Estoque disponível deste lote (capacity - sold - reserved).' })
+  @ApiProperty({
+    description: 'Estoque disponível deste lote (capacity - sold - reserved).',
+  })
   available: number;
   @ApiProperty({ nullable: true, type: String }) startsAt: string | null;
   @ApiProperty({ nullable: true, type: String }) endsAt: string | null;

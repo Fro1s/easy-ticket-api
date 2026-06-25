@@ -5,6 +5,7 @@ import { createId } from '@paralleldrive/cuid2';
 import { User } from './entities/user.entity';
 import { Role } from '../common/enums/role.enum';
 import { normalizeEmail } from './lib/normalize-email';
+import { normalizeCpf } from './lib/normalize-cpf';
 
 export interface CreateUserInput {
   email: string;
@@ -19,10 +20,16 @@ export interface CreateUserInput {
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectRepository(User) private readonly repo: Repository<User>) {}
+  constructor(
+    @InjectRepository(User) private readonly repo: Repository<User>,
+  ) {}
 
   findByEmail(email: string): Promise<User | null> {
     return this.repo.findOne({ where: { email: normalizeEmail(email) } });
+  }
+
+  findByCpf(cpf: string): Promise<User | null> {
+    return this.repo.findOne({ where: { cpf: normalizeCpf(cpf) } });
   }
 
   findById(id: string): Promise<User | null> {

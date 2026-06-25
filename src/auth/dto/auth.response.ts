@@ -14,7 +14,9 @@ export class AuthResponse {
   @ApiProperty({ description: 'Bearer token, expires per APP_JWT_EXPIRES_IN' })
   accessToken: string;
 
-  @ApiProperty({ description: 'Refresh token, expires per APP_JWT_REFRESH_EXPIRES_IN' })
+  @ApiProperty({
+    description: 'Refresh token, expires per APP_JWT_REFRESH_EXPIRES_IN',
+  })
   refreshToken: string;
 }
 

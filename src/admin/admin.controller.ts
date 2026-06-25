@@ -1,5 +1,18 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -26,7 +39,9 @@ export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
   @Get('producers')
-  @ApiOperation({ summary: 'List organizations with their logins and event counts' })
+  @ApiOperation({
+    summary: 'List organizations with their logins and event counts',
+  })
   @ApiResponse({ status: 200, type: AdminProducersResponse })
   listProducers(): Promise<AdminProducersResponse> {
     return this.admin.listProducers();
@@ -76,7 +91,10 @@ export class AdminController {
   @Patch('events/:id/feature')
   @ApiOperation({ summary: 'Destaca/remove destaque do evento na home' })
   @ApiResponse({ status: 200, type: AdminEventActionResult })
-  featureEvent(@Param('id') id: string, @Body() dto: FeatureEventDto): Promise<AdminEventActionResult> {
+  featureEvent(
+    @Param('id') id: string,
+    @Body() dto: FeatureEventDto,
+  ): Promise<AdminEventActionResult> {
     return this.admin.featureEvent(id, dto.featured);
   }
 }

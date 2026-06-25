@@ -11,9 +11,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * separada e revisada — esta migration aborta com mensagem clara se restarem
  * duplicatas, em vez de mesclar dados às cegas.
  */
-export class NormalizeUserEmailUnique1778300000000
-  implements MigrationInterface
-{
+export class NormalizeUserEmailUnique1778300000000 implements MigrationInterface {
   name = 'NormalizeUserEmailUnique1778300000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

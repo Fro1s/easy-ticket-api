@@ -71,20 +71,30 @@ export class AddBatches1777900000000 implements MigrationInterface {
       END $$;
     `);
 
-    await queryRunner.query(`ALTER TABLE "sectors" DROP COLUMN IF EXISTS "priceCents"`);
+    await queryRunner.query(
+      `ALTER TABLE "sectors" DROP COLUMN IF EXISTS "priceCents"`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "order_items" DROP CONSTRAINT IF EXISTS "FK_order_items_batch"`);
-    await queryRunner.query(`ALTER TABLE "order_items" DROP COLUMN IF EXISTS "batchId"`);
-    await queryRunner.query(`ALTER TABLE "sectors" ADD COLUMN IF NOT EXISTS "priceCents" int NOT NULL DEFAULT 0`);
+    await queryRunner.query(
+      `ALTER TABLE "order_items" DROP CONSTRAINT IF EXISTS "FK_order_items_batch"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "order_items" DROP COLUMN IF EXISTS "batchId"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "sectors" ADD COLUMN IF NOT EXISTS "priceCents" int NOT NULL DEFAULT 0`,
+    );
     await queryRunner.query(`
       UPDATE "sectors" s
       SET "priceCents" = b."priceCents"
       FROM "batches" b
       WHERE b."sectorId" = s."id" AND b."sortOrder" = 1
     `);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_batches_sector_sortOrder"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_batches_sector_sortOrder"`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "batches"`);
   }
 }

@@ -24,7 +24,9 @@ export class ProducerBatchesService {
   ) {}
 
   private async ownership(
-    user: AuthenticatedUser, eventId: string, sectorId: string,
+    user: AuthenticatedUser,
+    eventId: string,
+    sectorId: string,
   ): Promise<{ sector: Sector }> {
     const sector = await this.sectors.findOne({
       where: { id: sectorId },
@@ -44,9 +46,14 @@ export class ProducerBatchesService {
 
   private toResponse(b: Batch): BatchResponse {
     return {
-      id: b.id, sectorId: b.sectorId, name: b.name,
-      priceCents: b.priceCents, capacity: b.capacity,
-      sold: b.sold, reserved: b.reserved, sortOrder: b.sortOrder,
+      id: b.id,
+      sectorId: b.sectorId,
+      name: b.name,
+      priceCents: b.priceCents,
+      capacity: b.capacity,
+      sold: b.sold,
+      reserved: b.reserved,
+      sortOrder: b.sortOrder,
       producerOnly: b.producerOnly,
       isActive: b.isActive,
       ticketsPerUnit: b.ticketsPerUnit ?? 1,
@@ -56,7 +63,9 @@ export class ProducerBatchesService {
   }
 
   async list(
-    user: AuthenticatedUser, eventId: string, sectorId: string,
+    user: AuthenticatedUser,
+    eventId: string,
+    sectorId: string,
   ): Promise<BatchListResponse> {
     await this.ownership(user, eventId, sectorId);
     const items = await this.batches.find({
@@ -67,7 +76,10 @@ export class ProducerBatchesService {
   }
 
   async create(
-    user: AuthenticatedUser, eventId: string, sectorId: string, dto: CreateBatchDto,
+    user: AuthenticatedUser,
+    eventId: string,
+    sectorId: string,
+    dto: CreateBatchDto,
   ): Promise<BatchResponse> {
     const { sector } = await this.ownership(user, eventId, sectorId);
     const batch = this.batches.create({
@@ -88,18 +100,24 @@ export class ProducerBatchesService {
   }
 
   async update(
-    user: AuthenticatedUser, eventId: string, sectorId: string,
-    batchId: string, dto: UpdateBatchDto,
+    user: AuthenticatedUser,
+    eventId: string,
+    sectorId: string,
+    batchId: string,
+    dto: UpdateBatchDto,
   ): Promise<BatchResponse> {
     const { sector } = await this.ownership(user, eventId, sectorId);
-    const batch = await this.batches.findOne({ where: { id: batchId, sectorId } });
+    const batch = await this.batches.findOne({
+      where: { id: batchId, sectorId },
+    });
     if (!batch) throw new NotFoundException('batch not found');
     if (dto.name !== undefined) batch.name = dto.name;
     if (dto.priceCents !== undefined) batch.priceCents = dto.priceCents;
     if (dto.sortOrder !== undefined) batch.sortOrder = dto.sortOrder;
     if (dto.producerOnly !== undefined) batch.producerOnly = dto.producerOnly;
     if (dto.isActive !== undefined) batch.isActive = dto.isActive;
-    if (dto.ticketsPerUnit !== undefined) batch.ticketsPerUnit = dto.ticketsPerUnit;
+    if (dto.ticketsPerUnit !== undefined)
+      batch.ticketsPerUnit = dto.ticketsPerUnit;
     if (dto.startsAt !== undefined) {
       batch.startsAt = dto.startsAt === null ? null : new Date(dto.startsAt);
     }
@@ -120,10 +138,15 @@ export class ProducerBatchesService {
   }
 
   async remove(
-    user: AuthenticatedUser, eventId: string, sectorId: string, batchId: string,
+    user: AuthenticatedUser,
+    eventId: string,
+    sectorId: string,
+    batchId: string,
   ): Promise<void> {
     const { sector } = await this.ownership(user, eventId, sectorId);
-    const batch = await this.batches.findOne({ where: { id: batchId, sectorId } });
+    const batch = await this.batches.findOne({
+      where: { id: batchId, sectorId },
+    });
     if (!batch) throw new NotFoundException('batch not found');
     if (batch.sold > 0) {
       throw new BadRequestException(

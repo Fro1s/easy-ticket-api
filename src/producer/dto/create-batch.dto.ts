@@ -1,32 +1,53 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsBoolean, IsDateString, IsInt, IsOptional, IsString, Length, Min,
+  IsBoolean,
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  Length,
+  Min,
 } from 'class-validator';
 
 export class CreateBatchDto {
-  @ApiProperty() @IsString() @Length(1, 80)
+  @ApiProperty()
+  @IsString()
+  @Length(1, 80)
   name: string;
 
-  @ApiProperty() @IsInt() @Min(0)
+  @ApiProperty()
+  @IsInt()
+  @Min(0)
   priceCents: number;
 
-  @ApiProperty() @IsInt() @Min(1)
+  @ApiProperty()
+  @IsInt()
+  @Min(1)
   capacity: number;
 
-  @ApiProperty() @IsInt() @Min(0)
+  @ApiProperty()
+  @IsInt()
+  @Min(0)
   sortOrder: number;
 
   @ApiPropertyOptional({ default: false })
-  @IsOptional() @IsBoolean()
+  @IsOptional()
+  @IsBoolean()
   producerOnly?: boolean;
 
   @ApiPropertyOptional({ default: 1, minimum: 1 })
-  @IsOptional() @IsInt() @Min(1)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
   ticketsPerUnit?: number;
 
-  @ApiPropertyOptional() @IsOptional() @IsDateString()
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
   startsAt?: string;
 
-  @ApiPropertyOptional() @IsOptional() @IsDateString()
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
   endsAt?: string;
 }

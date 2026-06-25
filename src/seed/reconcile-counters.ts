@@ -12,7 +12,9 @@ async function main() {
     const s = await m.query(
       `UPDATE sectors s SET sold = COALESCE((SELECT SUM(b.sold) FROM batches b WHERE b."sectorId"=s.id),0) RETURNING id`,
     );
-    console.log(`[reconcile] batches updated: ${b.length}, sectors updated: ${s.length}`);
+    console.log(
+      `[reconcile] batches updated: ${b.length}, sectors updated: ${s.length}`,
+    );
   });
   await ds.destroy();
 }

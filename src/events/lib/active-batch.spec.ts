@@ -90,9 +90,17 @@ describe('resolveActiveBatch', () => {
 describe('isBatchOpen', () => {
   const at = new Date('2026-05-01T12:00:00Z');
   const base: BatchSnapshot = {
-    id: 'b', name: 'L', priceCents: 100, ticketsPerUnit: 1,
-    capacity: 10, sold: 0, reserved: 0, sortOrder: 0,
-    startsAt: null, endsAt: null, isActive: true,
+    id: 'b',
+    name: 'L',
+    priceCents: 100,
+    ticketsPerUnit: 1,
+    capacity: 10,
+    sold: 0,
+    reserved: 0,
+    sortOrder: 0,
+    startsAt: null,
+    endsAt: null,
+    isActive: true,
   };
 
   it('aberto quando ativo, com estoque e dentro da janela', () => {
@@ -105,9 +113,13 @@ describe('isBatchOpen', () => {
     expect(isBatchOpen({ ...base, sold: 7, reserved: 3 }, at)).toBe(false);
   });
   it('fechado quando startsAt no futuro', () => {
-    expect(isBatchOpen({ ...base, startsAt: new Date('2026-06-01T00:00:00Z') }, at)).toBe(false);
+    expect(
+      isBatchOpen({ ...base, startsAt: new Date('2026-06-01T00:00:00Z') }, at),
+    ).toBe(false);
   });
   it('fechado quando endsAt no passado', () => {
-    expect(isBatchOpen({ ...base, endsAt: new Date('2026-04-01T00:00:00Z') }, at)).toBe(false);
+    expect(
+      isBatchOpen({ ...base, endsAt: new Date('2026-04-01T00:00:00Z') }, at),
+    ).toBe(false);
   });
 });

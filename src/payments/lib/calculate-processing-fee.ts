@@ -18,7 +18,10 @@ export function calculateProcessingFeeCents(input: CalcInput): number {
   if (input.provider !== PaymentProvider.ABACATE_PAY) return 0;
   if (input.method === PaymentMethod.PIX) return input.config.pixFixedCents;
   if (input.method === PaymentMethod.CARD) {
-    return Math.round(input.subtotalCents * (input.config.cardPercent / 100)) + input.config.cardFixedCents;
+    return (
+      Math.round(input.subtotalCents * (input.config.cardPercent / 100)) +
+      input.config.cardFixedCents
+    );
   }
   return 0;
 }

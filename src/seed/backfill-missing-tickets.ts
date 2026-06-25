@@ -49,7 +49,9 @@ async function main() {
       if (need === 0) continue;
       const sector = await sectorRepo.findOne({ where: { id: it.sectorId } });
       if (!sector) {
-        console.warn(`[backfill] sector ${it.sectorId} not found — skipping item ${it.id}`);
+        console.warn(
+          `[backfill] sector ${it.sectorId} not found — skipping item ${it.id}`,
+        );
         continue;
       }
       for (let i = 0; i < need; i++) {

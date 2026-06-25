@@ -11,6 +11,7 @@ import {
   MyTicketsResponse,
 } from './dto/me.response';
 import { MyOrdersQuery, MyTicketsQuery } from './dto/me.query';
+import { TicketStatus } from '../common/enums/ticket-status.enum';
 
 @Injectable()
 export class MeService {
@@ -57,11 +58,21 @@ export class MeService {
       .leftJoin('venues', 'v', 'v.id = e.venueId')
       .leftJoin('sectors', 's', 's.id = t.sectorId')
       .leftJoin('batches', 'b', 'b.id = t.batchId')
-      .leftJoin('order_items', 'oi', 'oi.orderId = t.orderId AND oi.sectorId = t.sectorId')
+      .leftJoin(
+        'order_items',
+        'oi',
+        'oi.orderId = t.orderId AND oi.sectorId = t.sectorId',
+      )
       .where('t.userId = :userId', { userId });
 
     if (query.status) {
       qb.andWhere('t.status = :status', { status: query.status });
+    } else {
+      // Na visão "todos" (sem filtro), escondemos tickets que o dono já
+      // transferiu — eles continuam acessíveis filtrando por status=TRANSFERRED.
+      qb.andWhere('t.status != :transferred', {
+        transferred: TicketStatus.TRANSFERRED,
+      });
     }
 
     qb.orderBy('e.startsAt', 'ASC').addOrderBy('t.createdAt', 'DESC');
@@ -142,7 +153,11 @@ export class MeService {
       .leftJoin('venues', 'v', 'v.id = e.venueId')
       .leftJoin('sectors', 's', 's.id = t.sectorId')
       .leftJoin('batches', 'b', 'b.id = t.batchId')
-      .leftJoin('order_items', 'oi', 'oi.orderId = t.orderId AND oi.sectorId = t.sectorId')
+      .leftJoin(
+        'order_items',
+        'oi',
+        'oi.orderId = t.orderId AND oi.sectorId = t.sectorId',
+      )
       .where('t.id = :ticketId', { ticketId })
       .andWhere('t.userId = :userId', { userId })
       .select([
@@ -217,9 +232,7 @@ export class MeService {
     const pageSize = query.pageSize ?? 20;
     const skip = (page - 1) * pageSize;
 
-    const where = query.status
-      ? { userId, status: query.status }
-      : { userId };
+    const where = query.status ? { userId, status: query.status } : { userId };
 
     const [orders, total] = await this.orders.findAndCount({
       where,

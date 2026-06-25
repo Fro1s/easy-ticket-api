@@ -26,7 +26,11 @@ export class Referral {
   @Column('int', { default: 2000 })
   rewardCents: number;
 
-  @Column({ type: 'enum', enum: ReferralStatus, default: ReferralStatus.PENDING })
+  @Column({
+    type: 'enum',
+    enum: ReferralStatus,
+    default: ReferralStatus.PENDING,
+  })
   status: ReferralStatus;
 
   @CreateDateColumn()

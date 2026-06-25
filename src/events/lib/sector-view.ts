@@ -1,6 +1,9 @@
 import { resolveActiveBatch, BatchSnapshot, isBatchOpen } from './active-batch';
 
-export function openComboBatches(snapshots: BatchSnapshot[], at: Date): BatchSnapshot[] {
+export function openComboBatches(
+  snapshots: BatchSnapshot[],
+  at: Date,
+): BatchSnapshot[] {
   return snapshots.filter((b) => b.ticketsPerUnit > 1 && isBatchOpen(b, at));
 }
 

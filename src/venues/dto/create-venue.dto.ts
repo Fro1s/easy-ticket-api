@@ -1,11 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsInt,
-  IsNotEmpty,
-  IsString,
-  Length,
-  Min,
-} from 'class-validator';
+import { IsInt, IsNotEmpty, IsString, Length, Min } from 'class-validator';
 
 export class CreateVenueDto {
   @ApiProperty({ description: 'Nome do local' })

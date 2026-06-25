@@ -73,9 +73,7 @@ export class AbacatePayController {
     }
 
     const chargeId =
-      body.data?.checkout?.id ??
-      body.data?.transparent?.id ??
-      body.data?.id;
+      body.data?.checkout?.id ?? body.data?.transparent?.id ?? body.data?.id;
 
     if (PAID_EVENTS.has(body.event) && chargeId) {
       this.logger.log(`webhook ${body.event} for paymentId=${chargeId}`);

@@ -9,7 +9,9 @@ export class ListProducerOrdersQuery {
   @IsEnum(OrderStatus)
   status?: OrderStatus;
 
-  @ApiPropertyOptional({ description: 'Match buyer email or order id (substring)' })
+  @ApiPropertyOptional({
+    description: 'Match buyer email or order id (substring)',
+  })
   @IsOptional()
   @IsString()
   q?: string;

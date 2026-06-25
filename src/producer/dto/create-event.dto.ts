@@ -108,18 +108,24 @@ export class CreateEventDto {
   paymentProvider: PaymentProvider;
 
   @ApiPropertyOptional()
-  @ValidateIf((o: CreateEventDto) => o.paymentProvider === PaymentProvider.MANUAL_PIX)
+  @ValidateIf(
+    (o: CreateEventDto) => o.paymentProvider === PaymentProvider.MANUAL_PIX,
+  )
   @IsString()
   @Length(1, 255)
   pixKey?: string;
 
   @ApiPropertyOptional({ enum: PixKeyType })
-  @ValidateIf((o: CreateEventDto) => o.paymentProvider === PaymentProvider.MANUAL_PIX)
+  @ValidateIf(
+    (o: CreateEventDto) => o.paymentProvider === PaymentProvider.MANUAL_PIX,
+  )
   @IsEnum(PixKeyType)
   pixKeyType?: PixKeyType;
 
   @ApiPropertyOptional()
-  @ValidateIf((o: CreateEventDto) => o.paymentProvider === PaymentProvider.MANUAL_PIX)
+  @ValidateIf(
+    (o: CreateEventDto) => o.paymentProvider === PaymentProvider.MANUAL_PIX,
+  )
   @IsString()
   @Length(1, 160)
   pixHolderName?: string;

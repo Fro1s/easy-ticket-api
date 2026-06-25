@@ -17,9 +17,13 @@ async function main() {
   await ds.initialize();
 
   // Verdade por batch.
-  const batchTruth: Array<{ id: string; name: string; reserved_atual: number; real: number }> =
-    await ds.query(
-      `SELECT b.id, b.name, b.reserved AS reserved_atual,
+  const batchTruth: Array<{
+    id: string;
+    name: string;
+    reserved_atual: number;
+    real: number;
+  }> = await ds.query(
+    `SELECT b.id, b.name, b.reserved AS reserved_atual,
               COALESCE(p.q, 0)::int AS real
          FROM batches b
          JOIN sectors s ON s.id = b."sectorId"
@@ -31,12 +35,16 @@ async function main() {
             GROUP BY oi."batchId"
          ) p ON p."batchId" = b.id
         WHERE e.title ILIKE $1`,
-      [EVENT_LIKE],
-    );
+    [EVENT_LIKE],
+  );
 
-  const sectorTruth: Array<{ id: string; name: string; reserved_atual: number; real: number }> =
-    await ds.query(
-      `SELECT s.id, s.name, s.reserved AS reserved_atual,
+  const sectorTruth: Array<{
+    id: string;
+    name: string;
+    reserved_atual: number;
+    real: number;
+  }> = await ds.query(
+    `SELECT s.id, s.name, s.reserved AS reserved_atual,
               COALESCE(p.q, 0)::int AS real
          FROM sectors s
          JOIN events e ON e.id = s."eventId"
@@ -47,13 +55,25 @@ async function main() {
             GROUP BY oi."sectorId"
          ) p ON p."sectorId" = s.id
         WHERE e.title ILIKE $1`,
-      [EVENT_LIKE],
-    );
+    [EVENT_LIKE],
+  );
 
   console.log('\n=== BATCHES (reserved atual -> real) ===');
-  console.table(batchTruth.map((b) => ({ name: b.name, de: b.reserved_atual, para: b.real })));
+  console.table(
+    batchTruth.map((b) => ({
+      name: b.name,
+      de: b.reserved_atual,
+      para: b.real,
+    })),
+  );
   console.log('\n=== SECTORS (reserved atual -> real) ===');
-  console.table(sectorTruth.map((s) => ({ name: s.name, de: s.reserved_atual, para: s.real })));
+  console.table(
+    sectorTruth.map((s) => ({
+      name: s.name,
+      de: s.reserved_atual,
+      para: s.real,
+    })),
+  );
 
   if (!APPLY) {
     console.log('\n[DRY-RUN] nada alterado. Rode com --apply para efetivar.');
@@ -64,12 +84,18 @@ async function main() {
   await ds.transaction(async (mgr) => {
     for (const b of batchTruth) {
       if (b.reserved_atual !== b.real) {
-        await mgr.query(`UPDATE batches SET reserved = $1 WHERE id = $2`, [b.real, b.id]);
+        await mgr.query(`UPDATE batches SET reserved = $1 WHERE id = $2`, [
+          b.real,
+          b.id,
+        ]);
       }
     }
     for (const s of sectorTruth) {
       if (s.reserved_atual !== s.real) {
-        await mgr.query(`UPDATE sectors SET reserved = $1 WHERE id = $2`, [s.real, s.id]);
+        await mgr.query(`UPDATE sectors SET reserved = $1 WHERE id = $2`, [
+          s.real,
+          s.id,
+        ]);
       }
     }
   });

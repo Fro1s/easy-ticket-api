@@ -149,8 +149,8 @@ export class OrdersService {
             })),
           );
           if (matches) {
-            const ev = full.items[0]!.sector!.event!;
-            const secs = full.items.map((it) => it.sector!).filter(Boolean);
+            const ev = full.items[0].sector.event;
+            const secs = full.items.map((it) => it.sector).filter(Boolean);
             return this.serialize(full, ev, secs);
           }
           await this.cancelPendingOrderTx(mgr, full);
@@ -205,10 +205,17 @@ export class OrdersService {
         const sector = bySectorId.get(item.sectorId)!;
         const sectorBatches = batchesBySector.get(sector.id) ?? [];
         const snapshots = sectorBatches.map((b) => ({
-          id: b.id, name: b.name, priceCents: b.priceCents,
-          ticketsPerUnit: b.ticketsPerUnit ?? 1, capacity: b.capacity,
-          sold: b.sold, reserved: b.reserved, sortOrder: b.sortOrder,
-          startsAt: b.startsAt, endsAt: b.endsAt, isActive: b.isActive,
+          id: b.id,
+          name: b.name,
+          priceCents: b.priceCents,
+          ticketsPerUnit: b.ticketsPerUnit ?? 1,
+          capacity: b.capacity,
+          sold: b.sold,
+          reserved: b.reserved,
+          sortOrder: b.sortOrder,
+          startsAt: b.startsAt,
+          endsAt: b.endsAt,
+          isActive: b.isActive,
         }));
 
         let batch: Batch;
@@ -228,7 +235,9 @@ export class OrdersService {
             now,
           );
           if (!active) {
-            throw new ConflictException(`setor ${sector.name} sem lote disponível`);
+            throw new ConflictException(
+              `setor ${sector.name} sem lote disponível`,
+            );
           }
           batch = sectorBatches.find((b) => b.id === active.id)!;
         }
@@ -298,7 +307,7 @@ export class OrdersService {
 
     const event = order.items[0]?.sector?.event;
     if (!event) throw new NotFoundException('order has no event');
-    const sectors = order.items.map((it) => it.sector!).filter(Boolean);
+    const sectors = order.items.map((it) => it.sector).filter(Boolean);
     return this.serialize(order, event, sectors);
   }
 
@@ -347,8 +356,8 @@ export class OrdersService {
         await mgr.getRepository(OrderItem).save(item);
       }
 
-      const event = order.items[0]!.sector!.event!;
-      const sectors = order.items.map((it) => it.sector!).filter(Boolean);
+      const event = order.items[0].sector.event;
+      const sectors = order.items.map((it) => it.sector).filter(Boolean);
       return this.serialize(order, event, sectors);
     });
   }
@@ -375,7 +384,7 @@ export class OrdersService {
     const user = await this.users.findById(userId);
     if (!user) throw new NotFoundException('user not found');
 
-    const event = order.items[0]!.sector!.event!;
+    const event = order.items[0].sector.event;
 
     if (dto.method === PaymentMethod.CARD && event.cardEnabled === false) {
       throw new BadRequestException(
@@ -399,9 +408,15 @@ export class OrdersService {
     const provider = this.paymentsRegistry.resolve(event.paymentProvider);
 
     const feeCfg = {
-      pixFixedCents: Math.round(Number(this.config.get('ABACATEPAY_FEE_PIX_FIXED_BRL') ?? 0.80) * 100),
-      cardPercent: Number(this.config.get('ABACATEPAY_FEE_CARD_PERCENT') ?? 3.5),
-      cardFixedCents: Math.round(Number(this.config.get('ABACATEPAY_FEE_CARD_FIXED_BRL') ?? 0.60) * 100),
+      pixFixedCents: Math.round(
+        Number(this.config.get('ABACATEPAY_FEE_PIX_FIXED_BRL') ?? 0.8) * 100,
+      ),
+      cardPercent: Number(
+        this.config.get('ABACATEPAY_FEE_CARD_PERCENT') ?? 3.5,
+      ),
+      cardFixedCents: Math.round(
+        Number(this.config.get('ABACATEPAY_FEE_CARD_FIXED_BRL') ?? 0.6) * 100,
+      ),
     };
     const processingFeeCents = calculateProcessingFeeCents({
       provider: event.paymentProvider,
@@ -411,7 +426,8 @@ export class OrdersService {
     });
     order.processingFeeCents = processingFeeCents;
     order.processingFeeMethod = processingFeeCents > 0 ? dto.method : null;
-    order.totalCents = order.subtotalCents + order.feeCents + processingFeeCents;
+    order.totalCents =
+      order.subtotalCents + order.feeCents + processingFeeCents;
 
     const charge = await provider.createCharge({
       orderId: order.id,
@@ -454,12 +470,14 @@ export class OrdersService {
         relations: { items: { sector: { event: { venue: true } } } },
       });
       if (reloaded) {
-        const finalSectors = reloaded.items.map((it) => it.sector!).filter(Boolean);
+        const finalSectors = reloaded.items
+          .map((it) => it.sector)
+          .filter(Boolean);
         return this.serialize(reloaded, event, finalSectors);
       }
     }
 
-    const sectors = order.items.map((it) => it.sector!).filter(Boolean);
+    const sectors = order.items.map((it) => it.sector).filter(Boolean);
     return this.serialize(order, event, sectors);
   }
 
@@ -528,8 +546,8 @@ export class OrdersService {
 
     if (order.status === OrderStatus.PAID) {
       const tickets = await ticketRepo.find({ where: { orderId: order.id } });
-      const event = order.items[0]!.sector!.event!;
-      const sectors = order.items.map((it) => it.sector!).filter(Boolean);
+      const event = order.items[0].sector.event;
+      const sectors = order.items.map((it) => it.sector).filter(Boolean);
       const base = await this.serialize(order, event, sectors);
       return { ...base, ticketIds: tickets.map((t) => t.id) };
     }
@@ -601,7 +619,7 @@ export class OrdersService {
     await orderRepo.save(order);
     this.stream.notify(order.id, OrderStatus.PAID, order.paidAt);
 
-    const event = order.items[0]!.sector!.event!;
+    const event = order.items[0].sector.event;
     const finalSectors = order.items
       .map((it) => bySectorId.get(it.sectorId)!)
       .filter(Boolean);
@@ -862,7 +880,10 @@ export class OrdersService {
         provider: cached?.provider ?? fallbackProviderName,
         paymentId: order.paymentId,
         method: order.paymentMethod,
-        status: order.status === OrderStatus.PAID ? 'PAID' : (cached?.status ?? 'PENDING'),
+        status:
+          order.status === OrderStatus.PAID
+            ? 'PAID'
+            : (cached?.status ?? 'PENDING'),
         copyPaste: cached?.copyPaste ?? null,
         expiresAt:
           cached?.expiresAt ?? new Date(Date.now() + 60_000).toISOString(),

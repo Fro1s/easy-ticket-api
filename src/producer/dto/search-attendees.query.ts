@@ -4,7 +4,8 @@ import { Type } from 'class-transformer';
 
 export class SearchAttendeesQuery {
   @ApiPropertyOptional({
-    description: 'Busca por e-mail, nome, portador ou código do ingresso (substring)',
+    description:
+      'Busca por e-mail, nome, portador ou código do ingresso (substring)',
   })
   @IsOptional()
   @IsString()

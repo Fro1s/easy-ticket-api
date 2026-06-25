@@ -377,10 +377,7 @@ export class ProducerEventsService {
             endsAt: b.endsAt ? new Date(b.endsAt) : null,
           }),
         );
-        sector.capacity = dtoSector.batches.reduce(
-          (s, b) => s + b.capacity,
-          0,
-        );
+        sector.capacity = dtoSector.batches.reduce((s, b) => s + b.capacity, 0);
         await mgr.getRepository(Batch).save(batchEntities);
       }
       await mgr.getRepository(Sector).save(sectors);
@@ -550,7 +547,8 @@ export class ProducerEventsService {
         // no gateway — cobre tanto eventos MANUAL_PIX quanto Abacate com vendas
         // por vendedor (que são sempre offline/manual). Usa paymentMethod como
         // sinal porque sell-by-email reusa paymentId como chave de idempotência.
-        isManualPending: o.status === OrderStatus.PENDING && o.paymentMethod === null,
+        isManualPending:
+          o.status === OrderStatus.PENDING && o.paymentMethod === null,
       }));
 
     return { items, total: totalCount, page, pageSize };

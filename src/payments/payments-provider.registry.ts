@@ -8,10 +8,7 @@ import { PaymentsProvider } from './payments.types';
 export class PaymentsProviderRegistry {
   private readonly providers: Map<PaymentProvider, PaymentsProvider>;
 
-  constructor(
-    manualPix: ManualPixProvider,
-    abacate: AbacatePayProvider,
-  ) {
+  constructor(manualPix: ManualPixProvider, abacate: AbacatePayProvider) {
     this.providers = new Map<PaymentProvider, PaymentsProvider>([
       [PaymentProvider.MANUAL_PIX, manualPix],
       [PaymentProvider.ABACATE_PAY, abacate],
@@ -21,9 +18,7 @@ export class PaymentsProviderRegistry {
   resolve(key: PaymentProvider): PaymentsProvider {
     const provider = this.providers.get(key);
     if (!provider) {
-      throw new NotFoundException(
-        `payment provider ${key} is not implemented`,
-      );
+      throw new NotFoundException(`payment provider ${key} is not implemented`);
     }
     return provider;
   }
