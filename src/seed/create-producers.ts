@@ -15,7 +15,10 @@ interface ProducerUserSeed {
 const PRODUCER_NAME = 'Projeto Criança Feliz';
 const PASSWORD = process.env.PRODUCER_PASSWORD ?? 'pcf2026!';
 const USERS: ProducerUserSeed[] = [
-  { email: 'leticia.silveira@projetocriancafeliz.org', name: 'Letícia Silveira' },
+  {
+    email: 'leticia.silveira@projetocriancafeliz.org',
+    name: 'Letícia Silveira',
+  },
   { email: 'matheus.frois@projetocriancafeliz.org', name: 'Matheus Frois' },
 ];
 
@@ -35,9 +38,13 @@ async function main() {
         absorbFee: false,
       }),
     );
-    console.log(`[producers] created producer "${PRODUCER_NAME}" (${producer.id})`);
+    console.log(
+      `[producers] created producer "${PRODUCER_NAME}" (${producer.id})`,
+    );
   } else {
-    console.log(`[producers] using existing producer "${PRODUCER_NAME}" (${producer.id})`);
+    console.log(
+      `[producers] using existing producer "${PRODUCER_NAME}" (${producer.id})`,
+    );
   }
 
   const passwordHash = await argon2.hash(PASSWORD);
@@ -50,7 +57,9 @@ async function main() {
       existing.passwordHash = passwordHash;
       if (!existing.name) existing.name = seed.name;
       await userRepo.save(existing);
-      console.log(`[producers] updated user ${seed.email} -> role=PRODUCER, producerId=${producer.id}`);
+      console.log(
+        `[producers] updated user ${seed.email} -> role=PRODUCER, producerId=${producer.id}`,
+      );
     } else {
       await userRepo.save(
         userRepo.create({
@@ -69,7 +78,9 @@ async function main() {
   }
 
   await dataSource.destroy();
-  console.log(`[producers] done. login with any of: ${USERS.map((u) => u.email).join(', ')} / password: ${PASSWORD}`);
+  console.log(
+    `[producers] done. login with any of: ${USERS.map((u) => u.email).join(', ')} / password: ${PASSWORD}`,
+  );
 }
 
 main().catch((err) => {

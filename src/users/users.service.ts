@@ -20,7 +20,9 @@ export interface CreateUserInput {
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectRepository(User) private readonly repo: Repository<User>) {}
+  constructor(
+    @InjectRepository(User) private readonly repo: Repository<User>,
+  ) {}
 
   findByEmail(email: string): Promise<User | null> {
     return this.repo.findOne({ where: { email: normalizeEmail(email) } });

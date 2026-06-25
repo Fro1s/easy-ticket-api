@@ -33,14 +33,14 @@ export function resolveActiveBatch(
   const sorted = batches.slice().sort((a, b) => a.sortOrder - b.sortOrder);
   const active = sorted.find((b) => isBatchOpen(b, at)) ?? null;
   const next = active
-    ? sorted.find(
+    ? (sorted.find(
         (b) =>
           b.id !== active.id &&
           b.sortOrder > active.sortOrder &&
           b.isActive &&
-          (b.sold + b.reserved) < b.capacity &&
+          b.sold + b.reserved < b.capacity &&
           (!b.endsAt || b.endsAt > at),
-      ) ?? null
+      ) ?? null)
     : null;
   return { active, next };
 }

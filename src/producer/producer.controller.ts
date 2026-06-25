@@ -31,7 +31,10 @@ import { BatchListResponse, BatchResponse } from './dto/batch.response';
 import { CancelOrderResponse } from './dto/cancel-order.response';
 import { ConfirmManualPaymentDto } from './dto/confirm-manual-payment.dto';
 import { SellByEmailDto, SellByEmailResponse } from './dto/sell-by-email.dto';
-import { ValidateTicketDto, ValidateTicketResponse } from './dto/validate-ticket.dto';
+import {
+  ValidateTicketDto,
+  ValidateTicketResponse,
+} from './dto/validate-ticket.dto';
 import { AttendeeSearchResponse } from './dto/attendee-search.response';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -234,7 +237,9 @@ export class ProducerController {
     @CurrentUser() u: AuthenticatedUser,
     @Param('eventId') eventId: string,
     @Param('sectorId') sectorId: string,
-  ) { return this.batchesSvc.list(u, eventId, sectorId); }
+  ) {
+    return this.batchesSvc.list(u, eventId, sectorId);
+  }
 
   @Post('events/:eventId/sectors/:sectorId/batches')
   @Roles(Role.PRODUCER, Role.ADMIN)
@@ -245,7 +250,9 @@ export class ProducerController {
     @Param('eventId') eventId: string,
     @Param('sectorId') sectorId: string,
     @Body() dto: CreateBatchDto,
-  ) { return this.batchesSvc.create(u, eventId, sectorId, dto); }
+  ) {
+    return this.batchesSvc.create(u, eventId, sectorId, dto);
+  }
 
   @Patch('events/:eventId/sectors/:sectorId/batches/:batchId')
   @Roles(Role.PRODUCER, Role.ADMIN)
@@ -257,7 +264,9 @@ export class ProducerController {
     @Param('sectorId') sectorId: string,
     @Param('batchId') batchId: string,
     @Body() dto: UpdateBatchDto,
-  ) { return this.batchesSvc.update(u, eventId, sectorId, batchId, dto); }
+  ) {
+    return this.batchesSvc.update(u, eventId, sectorId, batchId, dto);
+  }
 
   @Delete('events/:eventId/sectors/:sectorId/batches/:batchId')
   @Roles(Role.PRODUCER, Role.ADMIN)
@@ -268,5 +277,7 @@ export class ProducerController {
     @Param('eventId') eventId: string,
     @Param('sectorId') sectorId: string,
     @Param('batchId') batchId: string,
-  ) { return this.batchesSvc.remove(u, eventId, sectorId, batchId); }
+  ) {
+    return this.batchesSvc.remove(u, eventId, sectorId, batchId);
+  }
 }

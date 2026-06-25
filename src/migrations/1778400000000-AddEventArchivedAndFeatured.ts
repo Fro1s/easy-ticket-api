@@ -7,9 +7,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Nota: remover um valor de enum no Postgres é custoso/arriscado, então o
  * down() apenas dropa a coluna featuredAt e deixa o valor ARCHIVED no enum.
  */
-export class AddEventArchivedAndFeatured1778400000000
-  implements MigrationInterface
-{
+export class AddEventArchivedAndFeatured1778400000000 implements MigrationInterface {
   name = 'AddEventArchivedAndFeatured1778400000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

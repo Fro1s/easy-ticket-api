@@ -14,7 +14,8 @@ export class TransferTicketDto {
 
   @ApiPropertyOptional({
     example: '12345678900',
-    description: 'CPF do destinatário (com ou sem máscara). Obrigatório se email não for informado.',
+    description:
+      'CPF do destinatário (com ou sem máscara). Obrigatório se email não for informado.',
   })
   @ValidateIf((o: TransferTicketDto) => !o.email)
   @Transform(({ value }) =>

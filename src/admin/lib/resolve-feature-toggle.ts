@@ -15,10 +15,14 @@ export interface FeatureToggleEffect {
  * Só é possível destacar um evento PUBLISHED. Desmarcar é sempre permitido
  * (idempotente). Marcar implica zerar o destaque dos demais (só 1 ativo).
  */
-export function resolveFeatureToggle(input: ResolveFeatureToggleInput): FeatureToggleEffect {
+export function resolveFeatureToggle(
+  input: ResolveFeatureToggleInput,
+): FeatureToggleEffect {
   if (input.featured) {
     if (input.status !== EventStatus.PUBLISHED) {
-      throw new BadRequestException('só é possível destacar um evento publicado');
+      throw new BadRequestException(
+        'só é possível destacar um evento publicado',
+      );
     }
     return { setTarget: true, clearOthers: true };
   }

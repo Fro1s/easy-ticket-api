@@ -23,7 +23,9 @@ async function main() {
     existing.passwordHash = passwordHash;
     if (!existing.name) existing.name = name;
     await userRepo.save(existing);
-    console.log(`[admin] updated existing user ${email} -> role=ADMIN, password reset`);
+    console.log(
+      `[admin] updated existing user ${email} -> role=ADMIN, password reset`,
+    );
   } else {
     await userRepo.save(
       userRepo.create({

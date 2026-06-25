@@ -25,7 +25,10 @@ import { TicketStatus } from '../common/enums/ticket-status.enum';
 import { OrderStatus } from '../common/enums/order-status.enum';
 import { ConfirmedOrderResponse } from '../orders/dto/order.response';
 import { AuthenticatedUser } from '../auth/decorators/current-user.decorator';
-import { ValidateTicketDto, ValidateTicketResponse } from './dto/validate-ticket.dto';
+import {
+  ValidateTicketDto,
+  ValidateTicketResponse,
+} from './dto/validate-ticket.dto';
 import { CancelOrderResponse } from './dto/cancel-order.response';
 
 @Injectable()

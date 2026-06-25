@@ -19,13 +19,26 @@ import { ClaimTokensModule } from '../claim-tokens/claim-tokens.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ManualPayment, Event, Sector, Batch, Order, Venue, Ticket]),
+    TypeOrmModule.forFeature([
+      ManualPayment,
+      Event,
+      Sector,
+      Batch,
+      Order,
+      Venue,
+      Ticket,
+    ]),
     OrdersModule,
     AuthModule,
     UsersModule,
     ClaimTokensModule,
   ],
   controllers: [ProducerController],
-  providers: [ProducerService, ProducerEventsService, ProducerBatchesService, SellByEmailService],
+  providers: [
+    ProducerService,
+    ProducerEventsService,
+    ProducerBatchesService,
+    SellByEmailService,
+  ],
 })
 export class ProducerModule {}

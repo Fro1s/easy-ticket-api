@@ -136,146 +136,149 @@ export class SellByEmailService {
     const buyerFirstName = user.name?.trim().split(/\s+/)[0] ?? null;
     const userId = user.id;
 
-    const txResult: TxResult = await this.dataSource.transaction(async (mgr) => {
-      const sector = await mgr
-        .getRepository(Sector)
-        .createQueryBuilder('s')
-        .setLock('pessimistic_write')
-        .where('s.id = :id', { id: dto.sectorId })
-        .andWhere('s.eventId = :eventId', { eventId: event.id })
-        .getOne();
-      if (!sector) {
-        throw new BadRequestException('sector does not belong to this event');
-      }
+    const txResult: TxResult = await this.dataSource.transaction(
+      async (mgr) => {
+        const sector = await mgr
+          .getRepository(Sector)
+          .createQueryBuilder('s')
+          .setLock('pessimistic_write')
+          .where('s.id = :id', { id: dto.sectorId })
+          .andWhere('s.eventId = :eventId', { eventId: event.id })
+          .getOne();
+        if (!sector) {
+          throw new BadRequestException('sector does not belong to this event');
+        }
 
-      const sectorBatches = await mgr
-        .getRepository(Batch)
-        .createQueryBuilder('b')
-        .setLock('pessimistic_write')
-        .where('b.sectorId = :sectorId', { sectorId: sector.id })
-        .getMany();
-      const { active } = resolveActiveBatch(
-        sectorBatches.map((b) => ({
-          id: b.id,
-          name: b.name,
-          priceCents: b.priceCents,
-          ticketsPerUnit: b.ticketsPerUnit ?? 1,
-          capacity: b.capacity,
-          sold: b.sold,
-          reserved: b.reserved,
-          sortOrder: b.sortOrder,
-          startsAt: b.startsAt,
-          endsAt: b.endsAt,
-          isActive: b.isActive,
-        })),
-        new Date(),
-      );
-      const selectedBatch = dto.batchId
-        ? sectorBatches.find((b) => b.id === dto.batchId)
-        : null;
-      if (dto.batchId && !selectedBatch) {
-        throw new BadRequestException('batch does not belong to this sector');
-      }
-      if (!active && !selectedBatch) {
-        throw new BadRequestException(
-          `setor ${sector.name} sem lote disponível`,
+        const sectorBatches = await mgr
+          .getRepository(Batch)
+          .createQueryBuilder('b')
+          .setLock('pessimistic_write')
+          .where('b.sectorId = :sectorId', { sectorId: sector.id })
+          .getMany();
+        const { active } = resolveActiveBatch(
+          sectorBatches.map((b) => ({
+            id: b.id,
+            name: b.name,
+            priceCents: b.priceCents,
+            ticketsPerUnit: b.ticketsPerUnit ?? 1,
+            capacity: b.capacity,
+            sold: b.sold,
+            reserved: b.reserved,
+            sortOrder: b.sortOrder,
+            startsAt: b.startsAt,
+            endsAt: b.endsAt,
+            isActive: b.isActive,
+          })),
+          new Date(),
         );
-      }
-      const batch =
-        selectedBatch ?? sectorBatches.find((b) => b.id === active!.id)!;
-      const available = batch.capacity - batch.sold - batch.reserved;
-      if (available < dto.qty) {
-        throw new BadRequestException(
-          `not enough stock in batch ${batch.name} (${available} left)`,
-        );
-      }
+        const selectedBatch = dto.batchId
+          ? sectorBatches.find((b) => b.id === dto.batchId)
+          : null;
+        if (dto.batchId && !selectedBatch) {
+          throw new BadRequestException('batch does not belong to this sector');
+        }
+        if (!active && !selectedBatch) {
+          throw new BadRequestException(
+            `setor ${sector.name} sem lote disponível`,
+          );
+        }
+        const batch =
+          selectedBatch ?? sectorBatches.find((b) => b.id === active!.id)!;
+        const available = batch.capacity - batch.sold - batch.reserved;
+        if (available < dto.qty) {
+          throw new BadRequestException(
+            `not enough stock in batch ${batch.name} (${available} left)`,
+          );
+        }
 
-      const attendees = dto.attendees?.map((a) => ({
-        name: a.name.trim(),
-        email: a.email?.trim().toLowerCase() || null,
-      })) ?? null;
-      validateAttendees({
-        qty: dto.qty,
-        ticketsPerUnit: batch.ticketsPerUnit,
-        attendees,
-      });
-
-      batch.reserved += dto.qty;
-      sector.reserved += dto.qty;
-      const subtotalCents = batch.priceCents * dto.qty;
-      const feeRate = Number(event.platformFeeRate);
-      const feeCents = Math.round(subtotalCents * feeRate);
-      const totalCents = subtotalCents + feeCents;
-
-      await mgr.getRepository(Sector).save(sector);
-      await mgr.getRepository(Batch).save(batch);
-
-      const order = new Order();
-      order.id = createId();
-      order.userId = userId;
-      order.status = OrderStatus.PENDING;
-      order.subtotalCents = subtotalCents;
-      order.feeCents = feeCents;
-      order.discountCents = 0;
-      order.totalCents = totalCents;
-      order.paymentMethod = null;
-      order.paymentId = externalId;
-      order.reservedUntil = new Date(Date.now() + RESERVATION_TTL_MS);
-      order.paidAt = null;
-      const item = new OrderItem();
-      item.id = createId();
-      item.sectorId = sector.id;
-      item.batchId = batch.id;
-      item.qty = dto.qty;
-      item.priceCents = batch.priceCents;
-      item.attendees = attendees;
-      order.items = [item];
-      await mgr.getRepository(Order).save(order);
-
-      let ticketIds: string[] = [];
-      let ticketsForEmail: TxResult['ticketsForEmail'] = [];
-
-      if (markPaid) {
-        const fresh = await mgr.getRepository(Order).findOne({
-          where: { id: order.id },
-          relations: { items: { sector: { event: { venue: true } } } },
+        const attendees =
+          dto.attendees?.map((a) => ({
+            name: a.name.trim(),
+            email: a.email?.trim().toLowerCase() || null,
+          })) ?? null;
+        validateAttendees({
+          qty: dto.qty,
+          ticketsPerUnit: batch.ticketsPerUnit,
+          attendees,
         });
-        if (!fresh) throw new NotFoundException('order vanished');
-        const confirmed = await this.orders.markOrderPaid(mgr, fresh, {
-          allowMissingPaymentMethod: true,
-        });
-        ticketIds = confirmed.ticketIds;
-        const tickets = await mgr
-          .getRepository(Ticket)
-          .find({ where: { orderId: order.id } });
-        ticketsForEmail = tickets.map((t) => ({
-          shortCode: t.shortCode,
-          sectorName: sector.name,
-          qrToken: t.qrToken,
-          holderName: t.holderName,
-          holderEmail: t.holderEmail,
-        }));
-      }
 
-      return {
-        orderId: order.id,
-        status: markPaid ? OrderStatus.PAID : OrderStatus.PENDING,
-        ticketIds,
-        ghostUserCreated,
-        duplicate: false,
-        userId,
-        buyerEmail: email,
-        buyerFirstName,
-        ghostNeedsClaim,
-        eventTitle: event.title,
-        eventArtist: event.artist,
-        eventStartsAt: event.startsAt,
-        venueName: event.venue?.name ?? '',
-        venueCity: event.venue?.city ?? '',
-        totalCents,
-        ticketsForEmail,
-      };
-    });
+        batch.reserved += dto.qty;
+        sector.reserved += dto.qty;
+        const subtotalCents = batch.priceCents * dto.qty;
+        const feeRate = Number(event.platformFeeRate);
+        const feeCents = Math.round(subtotalCents * feeRate);
+        const totalCents = subtotalCents + feeCents;
+
+        await mgr.getRepository(Sector).save(sector);
+        await mgr.getRepository(Batch).save(batch);
+
+        const order = new Order();
+        order.id = createId();
+        order.userId = userId;
+        order.status = OrderStatus.PENDING;
+        order.subtotalCents = subtotalCents;
+        order.feeCents = feeCents;
+        order.discountCents = 0;
+        order.totalCents = totalCents;
+        order.paymentMethod = null;
+        order.paymentId = externalId;
+        order.reservedUntil = new Date(Date.now() + RESERVATION_TTL_MS);
+        order.paidAt = null;
+        const item = new OrderItem();
+        item.id = createId();
+        item.sectorId = sector.id;
+        item.batchId = batch.id;
+        item.qty = dto.qty;
+        item.priceCents = batch.priceCents;
+        item.attendees = attendees;
+        order.items = [item];
+        await mgr.getRepository(Order).save(order);
+
+        let ticketIds: string[] = [];
+        let ticketsForEmail: TxResult['ticketsForEmail'] = [];
+
+        if (markPaid) {
+          const fresh = await mgr.getRepository(Order).findOne({
+            where: { id: order.id },
+            relations: { items: { sector: { event: { venue: true } } } },
+          });
+          if (!fresh) throw new NotFoundException('order vanished');
+          const confirmed = await this.orders.markOrderPaid(mgr, fresh, {
+            allowMissingPaymentMethod: true,
+          });
+          ticketIds = confirmed.ticketIds;
+          const tickets = await mgr
+            .getRepository(Ticket)
+            .find({ where: { orderId: order.id } });
+          ticketsForEmail = tickets.map((t) => ({
+            shortCode: t.shortCode,
+            sectorName: sector.name,
+            qrToken: t.qrToken,
+            holderName: t.holderName,
+            holderEmail: t.holderEmail,
+          }));
+        }
+
+        return {
+          orderId: order.id,
+          status: markPaid ? OrderStatus.PAID : OrderStatus.PENDING,
+          ticketIds,
+          ghostUserCreated,
+          duplicate: false,
+          userId,
+          buyerEmail: email,
+          buyerFirstName,
+          ghostNeedsClaim,
+          eventTitle: event.title,
+          eventArtist: event.artist,
+          eventStartsAt: event.startsAt,
+          venueName: event.venue?.name ?? '',
+          venueCity: event.venue?.city ?? '',
+          totalCents,
+          ticketsForEmail,
+        };
+      },
+    );
 
     let claimUrl: string | null = null;
     if (txResult.ghostNeedsClaim) {
@@ -320,7 +323,10 @@ export class SellByEmailService {
             venueName: txResult.venueName,
             venueCity: txResult.venueCity,
             tickets: ticketsWithQr,
-            claimUrl: destEmail === buyerEmailLower ? (claimUrl ?? undefined) : undefined,
+            claimUrl:
+              destEmail === buyerEmailLower
+                ? (claimUrl ?? undefined)
+                : undefined,
           });
           emailSent = true;
         } catch (err) {

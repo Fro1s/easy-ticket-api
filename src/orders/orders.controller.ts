@@ -20,10 +20,7 @@ import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CheckoutOrderDto } from './dto/checkout-order.dto';
 import { UpdateOrderAttendeesDto } from './dto/attendee.dto';
-import {
-  ConfirmedOrderResponse,
-  OrderResponse,
-} from './dto/order.response';
+import { ConfirmedOrderResponse, OrderResponse } from './dto/order.response';
 
 interface AuthedRequest extends Request {
   user: { id: string; email: string; role: string };

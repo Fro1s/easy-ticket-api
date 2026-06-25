@@ -50,7 +50,12 @@ export class OrderPaymentInfo {
   @ApiProperty() expiresAt: string;
   /** Server-derived: cents discounted from total when paying via Pix. */
   @ApiProperty() pixDiscountCents: number;
-  @ApiProperty({ nullable: true, type: String, description: 'Redirect URL for hosted-checkout flows (card via AbacatePay). Null for inline PIX.' })
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'Redirect URL for hosted-checkout flows (card via AbacatePay). Null for inline PIX.',
+  })
   redirectUrl!: string | null;
 }
 
@@ -70,10 +75,17 @@ export class OrderResponse {
   @ApiProperty({ type: [OrderItemResponse] }) items: OrderItemResponse[];
   @ApiProperty({ nullable: true, type: OrderPaymentInfo })
   payment: OrderPaymentInfo | null;
-  @ApiProperty({ description: 'Taxa de processamento (PSP) em centavos. Zero para MANUAL_PIX/sell-by-email.' })
+  @ApiProperty({
+    description:
+      'Taxa de processamento (PSP) em centavos. Zero para MANUAL_PIX/sell-by-email.',
+  })
   processingFeeCents!: number;
 
-  @ApiProperty({ enum: PaymentMethod, nullable: true, description: 'Método que originou a taxa de processamento, se aplicável.' })
+  @ApiProperty({
+    enum: PaymentMethod,
+    nullable: true,
+    description: 'Método que originou a taxa de processamento, se aplicável.',
+  })
   processingFeeMethod!: PaymentMethod | null;
 
   /** Server estimate of how much the buyer would pay at competitors. */

@@ -29,7 +29,8 @@ import { AdminEventActionResult } from './dto/admin-event-action.response';
 @Injectable()
 export class AdminService {
   constructor(
-    @InjectRepository(Producer) private readonly producers: Repository<Producer>,
+    @InjectRepository(Producer)
+    private readonly producers: Repository<Producer>,
     @InjectRepository(Event) private readonly events: Repository<Event>,
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly usersService: UsersService,
@@ -100,7 +101,9 @@ export class AdminService {
     producerId: string,
     dto: CreateProducerUserDto,
   ): Promise<AdminProducerUser> {
-    const producer = await this.producers.findOne({ where: { id: producerId } });
+    const producer = await this.producers.findOne({
+      where: { id: producerId },
+    });
     if (!producer) throw new NotFoundException('producer not found');
 
     const existing = await this.usersService.findByEmail(dto.email);
@@ -151,7 +154,9 @@ export class AdminService {
     const event = await this.events.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException('event not found');
     if (event.status !== EventStatus.PUBLISHED) {
-      throw new BadRequestException('só é possível desativar um evento publicado');
+      throw new BadRequestException(
+        'só é possível desativar um evento publicado',
+      );
     }
     event.status = EventStatus.ARCHIVED;
     event.featuredAt = null; // evento fora do site não pode ser destaque
@@ -163,21 +168,31 @@ export class AdminService {
     const event = await this.events.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException('event not found');
     if (event.status !== EventStatus.ARCHIVED) {
-      throw new BadRequestException('só é possível reativar um evento arquivado');
+      throw new BadRequestException(
+        'só é possível reativar um evento arquivado',
+      );
     }
     event.status = EventStatus.PUBLISHED;
     await this.events.save(event);
     return this.toActionResult(event);
   }
 
-  async featureEvent(eventId: string, featured: boolean): Promise<AdminEventActionResult> {
+  async featureEvent(
+    eventId: string,
+    featured: boolean,
+  ): Promise<AdminEventActionResult> {
     const event = await this.events.findOne({ where: { id: eventId } });
     if (!event) throw new NotFoundException('event not found');
     const effect = resolveFeatureToggle({ status: event.status, featured });
     await this.dataSource.transaction(async (mgr) => {
       const repo = mgr.getRepository(Event);
       if (effect.clearOthers) {
-        await repo.createQueryBuilder().update(Event).set({ featuredAt: null }).where('"featuredAt" IS NOT NULL').execute();
+        await repo
+          .createQueryBuilder()
+          .update(Event)
+          .set({ featuredAt: null })
+          .where('"featuredAt" IS NOT NULL')
+          .execute();
       }
       event.featuredAt = effect.setTarget ? new Date() : null;
       await repo.save(event);

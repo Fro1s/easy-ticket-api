@@ -23,7 +23,9 @@ export class CreateOrderItemDto {
   @Max(2)
   qty: number;
 
-  @ApiPropertyOptional({ description: 'Lote específico (combo). Se ausente, resolve o avulso ativo.' })
+  @ApiPropertyOptional({
+    description: 'Lote específico (combo). Se ausente, resolve o avulso ativo.',
+  })
   @IsOptional()
   @IsString()
   batchId?: string;

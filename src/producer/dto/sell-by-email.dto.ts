@@ -25,7 +25,8 @@ export class SellByEmailDto {
 
   @ApiProperty({
     required: false,
-    description: 'Optional batch id. Producer/admin sales can target private batches.',
+    description:
+      'Optional batch id. Producer/admin sales can target private batches.',
   })
   @IsOptional()
   @IsString()
@@ -45,7 +46,8 @@ export class SellByEmailDto {
 
   @ApiProperty({
     required: false,
-    description: 'When true (default), order is created and marked PAID immediately.',
+    description:
+      'When true (default), order is created and marked PAID immediately.',
     default: true,
   })
   @IsOptional()
@@ -74,7 +76,8 @@ export class SellByEmailResponse {
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'PIX BR-Code copy-paste (only when markPaid=false and provider=MANUAL_PIX). Useful for in-person sales.',
+    description:
+      'PIX BR-Code copy-paste (only when markPaid=false and provider=MANUAL_PIX). Useful for in-person sales.',
   })
   pixCopyPaste: string | null;
   @ApiProperty({ nullable: true, type: Number })

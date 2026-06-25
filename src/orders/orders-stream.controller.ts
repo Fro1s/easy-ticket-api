@@ -24,10 +24,13 @@ export class OrdersStreamController {
   @ApiOperation({
     summary: 'Server-Sent Events stream for order status changes',
   })
-  async events(@Param('id') id: string): Promise<Observable<{ data: unknown }>> {
-    const order = await this.dataSource
-      .getRepository(Order)
-      .findOne({ where: { id }, select: { id: true, status: true, paidAt: true } });
+  async events(
+    @Param('id') id: string,
+  ): Promise<Observable<{ data: unknown }>> {
+    const order = await this.dataSource.getRepository(Order).findOne({
+      where: { id },
+      select: { id: true, status: true, paidAt: true },
+    });
     if (!order) throw new NotFoundException('order not found');
 
     const initial = of({
@@ -40,7 +43,9 @@ export class OrdersStreamController {
     });
 
     // Keep-alive heartbeat every 25s — proxies kill idle connections at 30s.
-    const heartbeat = timer(25_000, 25_000).pipe(map(() => ({ data: { type: 'ping' as const } })));
+    const heartbeat = timer(25_000, 25_000).pipe(
+      map(() => ({ data: { type: 'ping' as const } })),
+    );
 
     const live = this.stream.subscribe(id);
 
@@ -48,7 +53,11 @@ export class OrdersStreamController {
     const terminal = live.pipe(
       filter((m) => {
         const s = (m.data as { status?: OrderStatus }).status;
-        return s === OrderStatus.PAID || s === OrderStatus.EXPIRED || s === OrderStatus.CANCELLED;
+        return (
+          s === OrderStatus.PAID ||
+          s === OrderStatus.EXPIRED ||
+          s === OrderStatus.CANCELLED
+        );
       }),
     );
 

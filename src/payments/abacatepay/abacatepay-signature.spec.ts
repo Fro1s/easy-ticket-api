@@ -3,7 +3,10 @@ import * as crypto from 'crypto';
 
 describe('verifyAbacateSignature', () => {
   const secret = 'shhh';
-  const body = JSON.stringify({ event: 'billing.paid', data: { id: 'ch_1', status: 'PAID' } });
+  const body = JSON.stringify({
+    event: 'billing.paid',
+    data: { id: 'ch_1', status: 'PAID' },
+  });
   const valid = crypto.createHmac('sha256', secret).update(body).digest('hex');
 
   it('accepts a valid signature', () => {

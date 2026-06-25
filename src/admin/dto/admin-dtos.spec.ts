@@ -17,17 +17,29 @@ describe('admin DTOs', () => {
   });
   it('CreateProducerUserDto accepts valid input', () => {
     expect(
-      errs(CreateProducerUserDto, { name: 'Letícia', email: 'a@b.com', password: 'pcf2026!' }),
+      errs(CreateProducerUserDto, {
+        name: 'Letícia',
+        email: 'a@b.com',
+        password: 'pcf2026!',
+      }),
     ).toHaveLength(0);
   });
   it('CreateProducerUserDto rejects bad email', () => {
     expect(
-      errs(CreateProducerUserDto, { name: 'X', email: 'nope', password: 'pcf2026!' }).length,
+      errs(CreateProducerUserDto, {
+        name: 'X',
+        email: 'nope',
+        password: 'pcf2026!',
+      }).length,
     ).toBeGreaterThan(0);
   });
   it('CreateProducerUserDto rejects short password', () => {
     expect(
-      errs(CreateProducerUserDto, { name: 'X', email: 'a@b.com', password: '123' }).length,
+      errs(CreateProducerUserDto, {
+        name: 'X',
+        email: 'a@b.com',
+        password: '123',
+      }).length,
     ).toBeGreaterThan(0);
   });
   it('ReassignEventDto requires producerId', () => {

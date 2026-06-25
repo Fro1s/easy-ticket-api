@@ -57,25 +57,45 @@ describe('validateAttendees — requireEmail', () => {
 
   it('requireEmail=true rejeita email vazio', () => {
     expect(() =>
-      validateAttendees({ qty: 1, ticketsPerUnit: 5, attendees: five(''), requireEmail: true }),
+      validateAttendees({
+        qty: 1,
+        ticketsPerUnit: 5,
+        attendees: five(''),
+        requireEmail: true,
+      }),
     ).toThrow(/email/i);
   });
 
   it('requireEmail=true rejeita email null', () => {
     expect(() =>
-      validateAttendees({ qty: 1, ticketsPerUnit: 5, attendees: five(null), requireEmail: true }),
+      validateAttendees({
+        qty: 1,
+        ticketsPerUnit: 5,
+        attendees: five(null),
+        requireEmail: true,
+      }),
     ).toThrow(/email/i);
   });
 
   it('requireEmail=true aceita todos com email válido', () => {
     expect(() =>
-      validateAttendees({ qty: 1, ticketsPerUnit: 5, attendees: five('a@x.com'), requireEmail: true }),
+      validateAttendees({
+        qty: 1,
+        ticketsPerUnit: 5,
+        attendees: five('a@x.com'),
+        requireEmail: true,
+      }),
     ).not.toThrow();
   });
 
   it('requireEmail=true permite emails repetidos', () => {
     expect(() =>
-      validateAttendees({ qty: 1, ticketsPerUnit: 5, attendees: five('mesmo@x.com'), requireEmail: true }),
+      validateAttendees({
+        qty: 1,
+        ticketsPerUnit: 5,
+        attendees: five('mesmo@x.com'),
+        requireEmail: true,
+      }),
     ).not.toThrow();
   });
 

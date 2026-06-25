@@ -1,10 +1,4 @@
-import {
-  Column,
-  Entity,
-  JoinColumn,
-  ManyToOne,
-  PrimaryColumn,
-} from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { createId } from '@paralleldrive/cuid2';
 import { Order } from './order.entity';
 import { Sector } from '../../events/entities/sector.entity';

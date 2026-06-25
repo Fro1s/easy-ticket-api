@@ -52,8 +52,7 @@ export class AbacatePayProvider implements PaymentsProvider {
       const webBaseUrl =
         this.config.get<string>('WEB_BASE_URL') ?? 'http://localhost:3000';
       const successUrl =
-        input.successUrl ??
-        `${webBaseUrl}/checkout/sucesso/${input.orderId}`;
+        input.successUrl ?? `${webBaseUrl}/checkout/sucesso/${input.orderId}`;
       const cancelUrl =
         input.cancelUrl ?? `${webBaseUrl}/checkout/${input.orderId}`;
       const r = await this.client.createCardCheckout({
@@ -77,6 +76,8 @@ export class AbacatePayProvider implements PaymentsProvider {
       };
     }
 
-    throw new BadRequestException(`unsupported payment method: ${input.method}`);
+    throw new BadRequestException(
+      `unsupported payment method: ${input.method}`,
+    );
   }
 }

@@ -23,9 +23,17 @@ export class AddCombosAndAttendees1778100000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "tickets" DROP COLUMN IF EXISTS "holderEmail"`);
-    await queryRunner.query(`ALTER TABLE "tickets" DROP COLUMN IF EXISTS "holderName"`);
-    await queryRunner.query(`ALTER TABLE "order_items" DROP COLUMN IF EXISTS "attendees"`);
-    await queryRunner.query(`ALTER TABLE "batches" DROP COLUMN IF EXISTS "ticketsPerUnit"`);
+    await queryRunner.query(
+      `ALTER TABLE "tickets" DROP COLUMN IF EXISTS "holderEmail"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "tickets" DROP COLUMN IF EXISTS "holderName"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "order_items" DROP COLUMN IF EXISTS "attendees"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "batches" DROP COLUMN IF EXISTS "ticketsPerUnit"`,
+    );
   }
 }

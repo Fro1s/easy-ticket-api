@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddProducerOnlyToBatches1778000000000
-  implements MigrationInterface
-{
+export class AddProducerOnlyToBatches1778000000000 implements MigrationInterface {
   name = 'AddProducerOnlyToBatches1778000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
