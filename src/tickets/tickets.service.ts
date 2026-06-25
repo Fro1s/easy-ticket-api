@@ -115,7 +115,10 @@ export class TicketsService {
 
     const newTicket = await this.dataSource.transaction(async (mgr) => {
       const repo = mgr.getRepository(Ticket);
-      const original = await repo.findOne({ where: { id: ticketId } });
+      const original = await repo.findOne({
+        where: { id: ticketId },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!original) throw new NotFoundException('ticket not found');
       if (original.userId !== senderUserId) {
         throw new ForbiddenException('ticket does not belong to you');
