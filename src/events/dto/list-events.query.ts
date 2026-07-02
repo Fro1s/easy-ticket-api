@@ -2,8 +2,19 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Category } from '../../common/enums/category.enum';
+import { EventWhen } from '../lib/event-listing';
 
 export class ListEventsQuery {
+  @ApiPropertyOptional({
+    enum: EventWhen,
+    default: EventWhen.UPCOMING,
+    description:
+      "Time window: 'upcoming' (default) returns events from now on (soonest first); 'past' returns events that already started (most recent first).",
+  })
+  @IsOptional()
+  @IsEnum(EventWhen)
+  when?: EventWhen = EventWhen.UPCOMING;
+
   @ApiPropertyOptional({ enum: Category })
   @IsOptional()
   @IsEnum(Category)
