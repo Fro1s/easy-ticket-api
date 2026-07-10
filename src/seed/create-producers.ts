@@ -13,7 +13,16 @@ interface ProducerUserSeed {
 }
 
 const PRODUCER_NAME = 'Projeto Criança Feliz';
-const PASSWORD = process.env.PRODUCER_PASSWORD ?? 'pcf2026!';
+// Senha obrigatória via env: nunca cair para um literal compartilhado.
+const PASSWORD = (() => {
+  const value = process.env.PRODUCER_PASSWORD?.trim();
+  if (!value) {
+    throw new Error(
+      '[producers] PRODUCER_PASSWORD is required — refusing to seed with a default credential',
+    );
+  }
+  return value;
+})();
 const USERS: ProducerUserSeed[] = [
   {
     email: 'leticia.silveira@projetocriancafeliz.org',
@@ -54,7 +63,8 @@ async function main() {
     if (existing) {
       existing.role = Role.PRODUCER;
       existing.producerId = producer.id;
-      existing.passwordHash = passwordHash;
+      // Não reseta a senha de uma conta já ativada.
+      if (!existing.passwordHash) existing.passwordHash = passwordHash;
       if (!existing.name) existing.name = seed.name;
       await userRepo.save(existing);
       console.log(
@@ -79,7 +89,7 @@ async function main() {
 
   await dataSource.destroy();
   console.log(
-    `[producers] done. login with any of: ${USERS.map((u) => u.email).join(', ')} / password: ${PASSWORD}`,
+    `[producers] done. login with any of: ${USERS.map((u) => u.email).join(', ')}`,
   );
 }
 

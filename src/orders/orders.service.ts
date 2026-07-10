@@ -490,6 +490,12 @@ export class OrdersService {
     userId: string,
     orderId: string,
   ): Promise<ConfirmedOrderResponse> {
+    // DEV ONLY: this endpoint mints paid tickets without any real payment.
+    // It must never be reachable in production, where a confirmed order is the
+    // gateway webhook's job alone.
+    if (this.config.get('NODE_ENV') === 'production') {
+      throw new NotFoundException();
+    }
     return this.dataSource.transaction(async (mgr) => {
       const order = await mgr.getRepository(Order).findOne({
         where: { id: orderId },
@@ -509,10 +515,28 @@ export class OrdersService {
    * paymentId (the charge id returned at checkout time) and marks it PAID.
    * Idempotent: a second call for the same paymentId is a no-op.
    */
-  async markPaidByPaymentId(paymentId: string): Promise<void> {
+  async markPaidByPaymentId(
+    paymentId: string,
+    paidAmountCents?: number,
+  ): Promise<void> {
     await this.dataSource.transaction(async (mgr) => {
+      // Trava a linha do pedido antes de checar o status: dois webhooks
+      // concorrentes com o mesmo paymentId serializam aqui, e o segundo lê
+      // status=PAID e sai — evitando emissão dupla de ingressos. O lock é
+      // aplicado sem joins (FOR UPDATE não vale sobre outer joins no Postgres);
+      // as relations são carregadas em seguida.
+      const locked = await mgr
+        .getRepository(Order)
+        .createQueryBuilder('o')
+        .setLock('pessimistic_write')
+        .where('o.paymentId = :paymentId', { paymentId })
+        .getOne();
+      if (!locked) {
+        this.logger.warn(`webhook: no order found for paymentId=${paymentId}`);
+        return;
+      }
       const order = await mgr.getRepository(Order).findOne({
-        where: { paymentId },
+        where: { id: locked.id },
         relations: { items: { sector: { event: { venue: true } } } },
       });
       if (!order) {
@@ -520,6 +544,19 @@ export class OrdersService {
         return;
       }
       if (order.status === OrderStatus.PAID) return; // idempotent
+      // Confere o valor pago contra o total do pedido quando o gateway o envia:
+      // um "completed" com valor divergente (pagamento parcial / replay) não
+      // deve confirmar o pedido.
+      if (
+        typeof paidAmountCents === 'number' &&
+        Number.isFinite(paidAmountCents) &&
+        paidAmountCents !== order.totalCents
+      ) {
+        this.logger.warn(
+          `webhook amount mismatch for paymentId=${paymentId}: paid=${paidAmountCents} expected=${order.totalCents} — ignoring`,
+        );
+        return;
+      }
       if (!order.paymentMethod) order.paymentMethod = PaymentMethod.PIX;
       await this.markOrderPaid(mgr, order, {
         allowMissingPaymentMethod: true,

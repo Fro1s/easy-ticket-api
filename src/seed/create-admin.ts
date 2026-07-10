@@ -6,10 +6,22 @@ import { dataSourceOptions } from '../common/database/data-source';
 import { User } from '../users/entities/user.entity';
 import { Role } from '../common/enums/role.enum';
 
+function required(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(
+      `[admin] ${name} is required — refusing to seed with a default credential`,
+    );
+  }
+  return value;
+}
+
 async function main() {
-  const email = process.env.ADMIN_EMAIL ?? 'matheuscosta1150@gmail.com';
-  const name = process.env.ADMIN_NAME ?? 'Matheus Frois';
-  const password = process.env.ADMIN_PASSWORD ?? 'admin123';
+  // Credenciais são obrigatórias: nunca cair para um valor literal (ex.:
+  // "admin123"), que criaria/resetaria um admin com senha trivial em produção.
+  const email = required('ADMIN_EMAIL');
+  const name = process.env.ADMIN_NAME?.trim() || email;
+  const password = required('ADMIN_PASSWORD');
 
   const dataSource = new DataSource(dataSourceOptions);
   await dataSource.initialize();
@@ -19,12 +31,17 @@ async function main() {
   const passwordHash = await argon2.hash(password);
 
   if (existing) {
+    // Promove a ADMIN mas NÃO sobrescreve a senha de uma conta já ativada —
+    // re-rodar o seed não pode resetar a credencial de um admin existente.
     existing.role = Role.ADMIN;
-    existing.passwordHash = passwordHash;
+    if (!existing.passwordHash) existing.passwordHash = passwordHash;
     if (!existing.name) existing.name = name;
     await userRepo.save(existing);
     console.log(
-      `[admin] updated existing user ${email} -> role=ADMIN, password reset`,
+      `[admin] updated existing user ${email} -> role=ADMIN` +
+        (existing.passwordHash === passwordHash
+          ? ' (password set)'
+          : ' (password left unchanged)'),
     );
   } else {
     await userRepo.save(
@@ -43,7 +60,7 @@ async function main() {
   }
 
   await dataSource.destroy();
-  console.log(`[admin] done. login: ${email} / password: ${password}`);
+  console.log(`[admin] done. login: ${email}`);
 }
 
 main().catch((err) => {

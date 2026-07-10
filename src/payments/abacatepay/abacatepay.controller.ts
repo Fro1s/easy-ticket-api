@@ -11,10 +11,14 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { OrdersService } from '../../orders/orders.service';
-import { verifyAbacateSignature } from './abacatepay-signature';
+import {
+  verifyAbacateSignature,
+  timingSafeStringEqual,
+} from './abacatepay-signature';
 
 interface AbacateWebhookPayload {
   id?: string;
@@ -23,19 +27,32 @@ interface AbacateWebhookPayload {
   devMode?: boolean;
   data?: {
     // checkout.* (hosted checkout via billing.create)
-    checkout?: { id?: string; externalId?: string; status?: string };
+    checkout?: {
+      id?: string;
+      externalId?: string;
+      status?: string;
+      amount?: number;
+    };
     // transparent.* (PIX QR via pixQrCode.create)
-    transparent?: { id?: string; externalId?: string; status?: string };
+    transparent?: {
+      id?: string;
+      externalId?: string;
+      status?: string;
+      amount?: number;
+    };
     // legacy/fallback
     id?: string;
     externalId?: string;
     status?: string;
+    amount?: number;
   };
 }
 
 const PAID_EVENTS = new Set(['checkout.completed', 'transparent.completed']);
 
 @ApiExcludeController()
+// O gateway reenvia webhooks legitimamente; não limitar por taxa.
+@SkipThrottle()
 @Controller('payments/abacate')
 export class AbacatePayController {
   private readonly logger = new Logger(AbacatePayController.name);
@@ -57,7 +74,8 @@ export class AbacatePayController {
     if (!secret) throw new BadRequestException('webhook secret not configured');
 
     const querySecretMatches =
-      typeof querySecret === 'string' && querySecret === secret;
+      typeof querySecret === 'string' &&
+      timingSafeStringEqual(querySecret, secret);
 
     let signatureMatches = false;
     if (signatureHeader && req.rawBody) {
@@ -74,10 +92,16 @@ export class AbacatePayController {
 
     const chargeId =
       body.data?.checkout?.id ?? body.data?.transparent?.id ?? body.data?.id;
+    const paidAmount =
+      body.data?.checkout?.amount ??
+      body.data?.transparent?.amount ??
+      body.data?.amount;
 
     if (PAID_EVENTS.has(body.event) && chargeId) {
       this.logger.log(`webhook ${body.event} for paymentId=${chargeId}`);
-      await this.orders.markPaidByPaymentId(chargeId);
+      // Passa o valor pago quando presente: markOrderPaid recusa a confirmação
+      // se não bater com o total do pedido (defesa extra caso o segredo vaze).
+      await this.orders.markPaidByPaymentId(chargeId, paidAmount);
     } else {
       this.logger.log(
         `webhook ${body.event} ignored (chargeId=${chargeId ?? 'none'})`,

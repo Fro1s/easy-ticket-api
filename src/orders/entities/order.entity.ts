@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -15,6 +16,13 @@ import { Ticket } from '../../tickets/entities/ticket.entity';
 import { OrderItem } from './order-item.entity';
 
 @Entity('orders')
+// Índice único parcial: impede que dois pedidos compartilhem o mesmo paymentId
+// (retries concorrentes do weblook levariam a emissão dupla de ingressos).
+// Parcial porque paymentId é nulo até o checkout.
+@Index('UQ_orders_paymentId', ['paymentId'], {
+  unique: true,
+  where: '"paymentId" IS NOT NULL',
+})
 export class Order {
   @PrimaryColumn('varchar', { length: 32 })
   id: string = createId();

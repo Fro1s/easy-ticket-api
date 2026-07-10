@@ -33,11 +33,17 @@ export class User {
   @Column('varchar', { length: 32, nullable: true })
   phone: string | null;
 
-  @Column('varchar', { length: 200, nullable: true })
+  // select:false — nunca vem em queries por padrão, então um `return user`
+  // acidental não vaza o hash. A auth reseleciona explicitamente via addSelect.
+  @Column('varchar', { length: 200, nullable: true, select: false })
   passwordHash: string | null;
 
   @Column({ type: 'enum', enum: Role, default: Role.BUYER })
   role: Role;
+
+  // Incrementado ao trocar senha / claim: invalida refresh tokens antigos.
+  @Column('int', { default: 0 })
+  tokenVersion: number;
 
   @Column('varchar', { length: 32, nullable: true })
   producerId: string | null;
