@@ -103,7 +103,7 @@ export class AuthService {
       dto.token,
       ClaimTokenPurpose.CLAIM,
     );
-    const user = await this.users.findById(claim.userId);
+    const user = await this.users.findByIdWithSecrets(claim.userId);
     if (!user) throw new BadRequestException('user not found');
     if (user.passwordHash) {
       throw new BadRequestException('account already claimed — use login');
@@ -122,13 +122,15 @@ export class AuthService {
       passwordHash,
       claimedAt: new Date(),
       role: user.role === Role.BUYER ? Role.BUYER : user.role,
+      // Ativar a conta invalida qualquer refresh token emitido antes.
+      tokenVersion: (user.tokenVersion ?? 0) + 1,
     });
 
     return this.buildAuthResponse(updated);
   }
 
   async refresh(refreshToken: string): Promise<AuthResponse> {
-    let payload: { sub: string; type: string };
+    let payload: { sub: string; type: string; tv?: number };
     try {
       payload = await this.jwt.verifyAsync(refreshToken, {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
@@ -143,6 +145,11 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('user not found');
     }
+    // Revogação: se a versão do token não bate com a do usuário (troca de
+    // senha / claim), o refresh foi invalidado.
+    if ((payload.tv ?? 0) !== user.tokenVersion) {
+      throw new UnauthorizedException('refresh token revoked');
+    }
     return this.buildAuthResponse(user);
   }
 
@@ -151,6 +158,7 @@ export class AuthService {
     email: string;
     name: string | null;
     role: string;
+    tokenVersion?: number;
   }): Promise<AuthResponse> {
     const payload = { sub: user.id, email: user.email, role: user.role };
     const accessToken = await this.jwt.signAsync(payload, {
@@ -158,7 +166,7 @@ export class AuthService {
       expiresIn: this.config.get('APP_JWT_EXPIRES_IN', '15m'),
     });
     const refreshToken = await this.jwt.signAsync(
-      { sub: user.id, type: 'refresh' },
+      { sub: user.id, type: 'refresh', tv: user.tokenVersion ?? 0 },
       {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
         expiresIn: this.config.get('APP_JWT_REFRESH_EXPIRES_IN', '14d'),

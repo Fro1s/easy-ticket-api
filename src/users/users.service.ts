@@ -25,7 +25,13 @@ export class UsersService {
   ) {}
 
   findByEmail(email: string): Promise<User | null> {
-    return this.repo.findOne({ where: { email: normalizeEmail(email) } });
+    // passwordHash é select:false; a auth precisa dele para login/claim, então
+    // reselecionamos explicitamente aqui.
+    return this.repo
+      .createQueryBuilder('u')
+      .addSelect('u.passwordHash')
+      .where('u.email = :email', { email: normalizeEmail(email) })
+      .getOne();
   }
 
   findByCpf(cpf: string): Promise<User | null> {
@@ -34,6 +40,15 @@ export class UsersService {
 
   findById(id: string): Promise<User | null> {
     return this.repo.findOne({ where: { id } });
+  }
+
+  /** Como findById, mas reseleciona passwordHash (fluxos de auth/claim). */
+  findByIdWithSecrets(id: string): Promise<User | null> {
+    return this.repo
+      .createQueryBuilder('u')
+      .addSelect('u.passwordHash')
+      .where('u.id = :id', { id })
+      .getOne();
   }
 
   async create(input: CreateUserInput): Promise<User> {

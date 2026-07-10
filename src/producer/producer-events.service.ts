@@ -342,7 +342,13 @@ export class ProducerEventsService {
         pixKey: dto.pixKey ?? null,
         pixKeyType: dto.pixKeyType ?? null,
         pixHolderName: dto.pixHolderName ?? null,
-        platformFeeRate: dto.platformFeeRate,
+        // A taxa da plataforma é receita da plataforma: só ADMIN pode defini-la.
+        // Para PRODUCER o valor enviado é ignorado e o default do banco (0.025)
+        // é aplicado.
+        ...(currentUser.role === Role.ADMIN &&
+        dto.platformFeeRate !== undefined
+          ? { platformFeeRate: dto.platformFeeRate }
+          : {}),
       });
       await mgr.getRepository(Event).save(event);
 
@@ -409,7 +415,8 @@ export class ProducerEventsService {
     if (dto.pixKeyType !== undefined) patch.pixKeyType = dto.pixKeyType ?? null;
     if (dto.pixHolderName !== undefined)
       patch.pixHolderName = dto.pixHolderName || null;
-    if (dto.platformFeeRate !== undefined)
+    // Só ADMIN pode alterar a taxa da plataforma; PRODUCER não pode zerá-la.
+    if (dto.platformFeeRate !== undefined && currentUser.role === Role.ADMIN)
       patch.platformFeeRate = dto.platformFeeRate;
     if (dto.cardEnabled !== undefined) patch.cardEnabled = dto.cardEnabled;
 

@@ -1,5 +1,6 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -8,7 +9,10 @@ import { ClaimDto, ConsumeMagicLinkDto } from './dto/claim.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { AuthResponse, MagicLinkResponse } from './dto/auth.response';
 
+// Limites apertados contra brute-force / credential stuffing / email bombing.
+// Login e magic-link (que dispara e-mails) são os mais restritos.
 @ApiTags('auth')
+@Throttle({ default: { ttl: 60_000, limit: 10 } })
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -21,6 +25,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @ApiOperation({ summary: 'Email + password login' })
   @ApiResponse({ status: 200, type: AuthResponse })
   login(@Body() dto: LoginDto): Promise<AuthResponse> {
@@ -28,6 +33,7 @@ export class AuthController {
   }
 
   @Post('magic-link')
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
   @ApiOperation({
     summary: 'Request a magic-link email (15 min TTL). Always responds 200.',
   })
@@ -37,6 +43,7 @@ export class AuthController {
   }
 
   @Post('magic-link/consume')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiOperation({ summary: 'Exchange a magic-link token for a session' })
   @ApiResponse({ status: 200, type: AuthResponse })
   consumeMagicLink(@Body() dto: ConsumeMagicLinkDto): Promise<AuthResponse> {
@@ -51,6 +58,7 @@ export class AuthController {
   }
 
   @Post('claim')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiOperation({ summary: 'Claim a ghost account using the email token' })
   @ApiResponse({ status: 200, type: AuthResponse })
   claim(@Body() dto: ClaimDto): Promise<AuthResponse> {

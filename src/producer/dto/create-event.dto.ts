@@ -130,11 +130,18 @@ export class CreateEventDto {
   @Length(1, 160)
   pixHolderName?: string;
 
-  @ApiProperty({ example: 0.025, minimum: 0, maximum: 0.5 })
+  @ApiPropertyOptional({
+    example: 0.025,
+    minimum: 0,
+    maximum: 0.5,
+    description:
+      'Taxa da plataforma. Apenas ADMIN pode informar; para PRODUCER o valor é ignorado e o padrão do servidor é aplicado.',
+  })
+  @IsOptional()
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   @Max(0.5)
-  platformFeeRate: number;
+  platformFeeRate?: number;
 
   @ApiPropertyOptional({
     description:
