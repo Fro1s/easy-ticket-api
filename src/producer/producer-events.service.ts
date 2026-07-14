@@ -399,6 +399,20 @@ export class ProducerEventsService {
   ): Promise<ProducerEventDetail> {
     const detail = await this.getById(currentUser, eventId);
 
+    // Payout-routing fields are locked once the event leaves DRAFT: a live
+    // PUBLISHED event is actively collecting money, so silently re-pointing
+    // the PIX key / payment provider would divert buyers' payments.
+    const changesPayoutRouting =
+      dto.pixKey !== undefined ||
+      dto.pixKeyType !== undefined ||
+      dto.pixHolderName !== undefined ||
+      dto.paymentProvider !== undefined;
+    if (changesPayoutRouting && detail.status !== EventStatus.DRAFT) {
+      throw new ForbiddenException(
+        'Dados de recebimento (chave PIX e provedor de pagamento) só podem ser alterados enquanto o evento está em rascunho.',
+      );
+    }
+
     const patch: Partial<Event> = {};
     if (dto.title !== undefined) patch.title = dto.title;
     if (dto.artist !== undefined) patch.artist = dto.artist;

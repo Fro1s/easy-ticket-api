@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { dataSourceOptions } from './common/database/data-source';
+import { UserOrIpThrottlerGuard } from './common/guards/user-throttler.guard';
 import { UsersModule } from './users/users.module';
 import { ProducersModule } from './producers/producers.module';
 import { VenuesModule } from './venues/venues.module';
@@ -39,6 +40,6 @@ import { AdminModule } from './admin/admin.module';
     ClaimTokensModule,
     AdminModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [{ provide: APP_GUARD, useClass: UserOrIpThrottlerGuard }],
 })
 export class AppModule {}

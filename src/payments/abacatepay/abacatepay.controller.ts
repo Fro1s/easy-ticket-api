@@ -73,7 +73,12 @@ export class AbacatePayController {
     const secret = this.config.get<string>('ABACATEPAY_WEBHOOK_SECRET')?.trim();
     if (!secret) throw new BadRequestException('webhook secret not configured');
 
+    // The URL query-secret path is dev-only: query strings leak into proxy /
+    // CDN / APM logs, so in production we require the HMAC signature over the
+    // raw body (which a log leak can't reproduce).
+    const allowQuerySecret = process.env.NODE_ENV !== 'production';
     const querySecretMatches =
+      allowQuerySecret &&
       typeof querySecret === 'string' &&
       timingSafeStringEqual(querySecret, secret);
 
