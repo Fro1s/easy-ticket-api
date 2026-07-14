@@ -211,7 +211,11 @@ export class ProducerService {
       if (dto.ticketId) {
         qb.where('t.id = :id', { id: dto.ticketId });
       } else if (dto.shortCode) {
-        qb.where('UPPER(t.shortCode) = UPPER(:code)', { code: dto.shortCode });
+        // shortCodes are generated uppercase, so an equality match uses the
+        // unique index instead of forcing a seq-scan via UPPER() under the lock.
+        qb.where('t.shortCode = :code', {
+          code: dto.shortCode.trim().toUpperCase(),
+        });
       } else {
         qb.where('t.qrToken = :token', { token: dto.qrToken });
       }

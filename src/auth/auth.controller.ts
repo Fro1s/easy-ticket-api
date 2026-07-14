@@ -1,6 +1,13 @@
-import { Body, Controller, Post } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { Request } from 'express';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -8,6 +15,10 @@ import { MagicLinkDto } from './dto/magic-link.dto';
 import { ClaimDto, ConsumeMagicLinkDto } from './dto/claim.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { AuthResponse, MagicLinkResponse } from './dto/auth.response';
+
+interface AuthedRequest extends Request {
+  user: { id: string; email: string; role: string };
+}
 
 // Limites apertados contra brute-force / credential stuffing / email bombing.
 // Login e magic-link (que dispara e-mails) são os mais restritos.
@@ -63,5 +74,16 @@ export class AuthController {
   @ApiResponse({ status: 200, type: AuthResponse })
   claim(@Body() dto: ClaimDto): Promise<AuthResponse> {
     return this.auth.claim(dto);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Revoke all refresh tokens for the current user (logout).',
+  })
+  @ApiResponse({ status: 201 })
+  logout(@Req() req: AuthedRequest): Promise<{ success: true }> {
+    return this.auth.logout(req.user.id);
   }
 }
