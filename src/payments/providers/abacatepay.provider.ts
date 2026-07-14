@@ -21,10 +21,17 @@ export class AbacatePayProvider implements PaymentsProvider {
   ) {}
 
   async createCharge(input: CreatePaymentInput): Promise<PaymentChargeInfo> {
+    const buyerCpf = input.buyerCpf?.trim();
+    if (!buyerCpf) {
+      throw new BadRequestException(
+        'CPF do comprador é obrigatório para pagamentos via AbacatePay.',
+      );
+    }
+
     const customer = {
       name: input.buyerName ?? 'Cliente',
       email: input.buyerEmail,
-      taxId: input.buyerCpf ?? undefined,
+      taxId: buyerCpf,
     };
 
     if (input.method === PaymentMethod.PIX) {
