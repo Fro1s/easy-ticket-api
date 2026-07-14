@@ -14,6 +14,7 @@ import {
 import { ListEventsQuery } from './dto/list-events.query';
 import { BatchSnapshot } from './lib/active-batch';
 import { buildSectorView, resolveActiveAvulso } from './lib/sector-view';
+import { resolveListingTimeFilter } from './lib/event-listing';
 
 // Re-exported so consumers can import buildSectorView from the service surface.
 export { buildSectorView };
@@ -65,6 +66,11 @@ export class EventsService {
       .leftJoinAndSelect('sector.batches', 'batch')
       .where('event.status = :status', { status: EventStatus.PUBLISHED });
 
+    // Time window: upcoming (default) vs past. `comparator`/`order` are fixed
+    // literals from the enum, never raw user input, so inlining is safe.
+    const { comparator, order } = resolveListingTimeFilter(query.when);
+    qb.andWhere(`event.startsAt ${comparator} :now`, { now: new Date() });
+
     if (query.category) {
       qb.andWhere('event.category = :category', { category: query.category });
     }
@@ -84,7 +90,7 @@ export class EventsService {
       );
     }
 
-    qb.orderBy('event.startsAt', 'ASC')
+    qb.orderBy('event.startsAt', order)
       .skip((page - 1) * pageSize)
       .take(pageSize);
 
