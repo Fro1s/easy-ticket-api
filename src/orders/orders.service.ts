@@ -44,8 +44,51 @@ const RESERVATION_TTL_MS = 10 * 60_000;
 const COMPETITOR_FEE_RATE = 0.2;
 /** Máximo de unidades (soma de qty) por pedido. */
 const MAX_QTY_PER_ORDER = 2;
-// Mocked in-memory cache of payment session data per order (until we move to Redis).
-const paymentCache = new Map<string, PaymentChargeInfo>();
+// In-memory cache of payment session data per order. Entries are stamped with
+// an expiry and swept lazily so the map can't grow unbounded (single-instance
+// only — move to Redis before running >1 machine).
+const PAYMENT_CACHE_TTL_MS = 40 * 60_000;
+interface PaymentCacheEntry {
+  charge: PaymentChargeInfo;
+  expiresAt: number;
+}
+const paymentCache = new Map<string, PaymentCacheEntry>();
+
+function paymentCacheSet(orderId: string, charge: PaymentChargeInfo): void {
+  const now = Date.now();
+  paymentCache.set(orderId, { charge, expiresAt: now + PAYMENT_CACHE_TTL_MS });
+  // Lazy sweep so the map stays bounded even if a cancel path forgets to delete.
+  if (paymentCache.size > 500) {
+    for (const [k, v] of paymentCache) {
+      if (v.expiresAt <= now) paymentCache.delete(k);
+    }
+  }
+}
+
+function paymentCacheGet(orderId: string): PaymentChargeInfo | null {
+  const entry = paymentCache.get(orderId);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    paymentCache.delete(orderId);
+    return null;
+  }
+  return entry.charge;
+}
+
+/**
+ * Side effects that must run AFTER the confirming DB transaction commits and
+ * releases its Sector/Batch row locks — never while holding them, or every
+ * concurrent buyer of the same event serializes behind this network I/O.
+ */
+interface PaidSideEffects {
+  orderId: string;
+  paidAt: Date;
+  order: Order;
+  tickets: Ticket[];
+  event: Event;
+  sectorById: Map<string, Sector>;
+  sendEmail: boolean;
+}
 
 @Injectable()
 export class OrdersService {
@@ -445,13 +488,14 @@ export class OrdersService {
         venueCity: event.venue?.city ?? null,
       },
     });
-    paymentCache.set(order.id, charge);
+    paymentCacheSet(order.id, charge);
 
     order.paymentMethod = dto.method;
     order.paymentId = charge.paymentId;
     await this.dataSource.getRepository(Order).save(order);
 
     if (charge.status === 'PAID') {
+      const deferred: PaidSideEffects[] = [];
       await this.dataSource.transaction(async (mgr) => {
         const fresh = await mgr.getRepository(Order).findOne({
           where: { id: order.id },
@@ -461,9 +505,11 @@ export class OrdersService {
           await this.markOrderPaid(mgr, fresh, {
             allowMissingPaymentMethod: false,
             sendEmail: true,
+            deferSideEffects: deferred,
           });
         }
       });
+      for (const fx of deferred) await this.runPaidSideEffects(fx);
       // Reload to get updated status for the response.
       const reloaded = await this.dataSource.getRepository(Order).findOne({
         where: { id: order.id },
@@ -496,7 +542,8 @@ export class OrdersService {
     if (this.config.get('NODE_ENV') === 'production') {
       throw new NotFoundException();
     }
-    return this.dataSource.transaction(async (mgr) => {
+    const deferred: PaidSideEffects[] = [];
+    const result = await this.dataSource.transaction(async (mgr) => {
       const order = await mgr.getRepository(Order).findOne({
         where: { id: orderId },
         relations: { items: { sector: { event: { venue: true } } } },
@@ -506,8 +553,11 @@ export class OrdersService {
       return this.markOrderPaid(mgr, order, {
         allowMissingPaymentMethod: false,
         sendEmail: true,
+        deferSideEffects: deferred,
       });
     });
+    for (const fx of deferred) await this.runPaidSideEffects(fx);
+    return result;
   }
 
   /**
@@ -519,31 +569,23 @@ export class OrdersService {
     paymentId: string,
     paidAmountCents?: number,
   ): Promise<void> {
+    const deferred: PaidSideEffects[] = [];
     await this.dataSource.transaction(async (mgr) => {
-      // Trava a linha do pedido antes de checar o status: dois webhooks
-      // concorrentes com o mesmo paymentId serializam aqui, e o segundo lê
-      // status=PAID e sai — evitando emissão dupla de ingressos. O lock é
-      // aplicado sem joins (FOR UPDATE não vale sobre outer joins no Postgres);
-      // as relations são carregadas em seguida.
-      const locked = await mgr
-        .getRepository(Order)
-        .createQueryBuilder('o')
-        .setLock('pessimistic_write')
-        .where('o.paymentId = :paymentId', { paymentId })
-        .getOne();
-      if (!locked) {
-        this.logger.warn(`webhook: no order found for paymentId=${paymentId}`);
-        return;
-      }
+      // Read by paymentId WITHOUT locking the Order row. The Sector/Batch locks
+      // taken inside markOrderPaid are the sole serialization point, which
+      // avoids a lock-order inversion (Order→Sector here vs the expiry cron's
+      // Sector→Order) that could deadlock. Idempotency is re-checked under those
+      // locks, so two concurrent webhooks for the same paymentId can't
+      // double-issue tickets.
       const order = await mgr.getRepository(Order).findOne({
-        where: { id: locked.id },
+        where: { paymentId },
         relations: { items: { sector: { event: { venue: true } } } },
       });
       if (!order) {
         this.logger.warn(`webhook: no order found for paymentId=${paymentId}`);
         return;
       }
-      if (order.status === OrderStatus.PAID) return; // idempotent
+      if (order.status === OrderStatus.PAID) return; // fast idempotent path
       // Confere o valor pago contra o total do pedido quando o gateway o envia:
       // um "completed" com valor divergente (pagamento parcial / replay) não
       // deve confirmar o pedido.
@@ -561,8 +603,10 @@ export class OrdersService {
       await this.markOrderPaid(mgr, order, {
         allowMissingPaymentMethod: true,
         sendEmail: true,
+        deferSideEffects: deferred,
       });
     });
+    for (const fx of deferred) await this.runPaidSideEffects(fx);
   }
 
   /**
@@ -575,7 +619,11 @@ export class OrdersService {
   async markOrderPaid(
     mgr: EntityManager,
     order: Order,
-    opts: { allowMissingPaymentMethod: boolean; sendEmail?: boolean },
+    opts: {
+      allowMissingPaymentMethod: boolean;
+      sendEmail?: boolean;
+      deferSideEffects?: PaidSideEffects[];
+    },
   ): Promise<ConfirmedOrderResponse> {
     const orderRepo = mgr.getRepository(Order);
     const sectorRepo = mgr.getRepository(Sector);
@@ -617,6 +665,25 @@ export class OrdersService {
       .getMany();
     const byBatchId = new Map(batches.map((b) => [b.id, b]));
 
+    // Re-read status now that the Sector/Batch locks are held — these locks are
+    // the sole serialization point (the webhook path no longer takes an Order
+    // FOR UPDATE, which avoids a lock-order inversion vs the expiry cron). A
+    // concurrent confirmation of this order commits PAID before releasing these
+    // locks, so if it's already PAID we return idempotently instead of
+    // double-issuing tickets.
+    const currentStatus = await orderRepo.findOne({
+      where: { id: order.id },
+      select: { id: true, status: true },
+    });
+    if (currentStatus?.status === OrderStatus.PAID) {
+      order.status = OrderStatus.PAID;
+      const existing = await ticketRepo.find({ where: { orderId: order.id } });
+      const ev = order.items[0].sector.event;
+      const secs = order.items.map((it) => it.sector).filter(Boolean);
+      const idem = await this.serialize(order, ev, secs);
+      return { ...idem, ticketIds: existing.map((t) => t.id) };
+    }
+
     const tickets: Ticket[] = [];
     for (const item of order.items) {
       const sector = bySectorId.get(item.sectorId)!;
@@ -654,7 +721,6 @@ export class OrdersService {
     order.paidAt = new Date();
     paymentCache.delete(order.id);
     await orderRepo.save(order);
-    this.stream.notify(order.id, OrderStatus.PAID, order.paidAt);
 
     const event = order.items[0].sector.event;
     const finalSectors = order.items
@@ -662,12 +728,50 @@ export class OrdersService {
       .filter(Boolean);
     const base = await this.serialize(order, event, finalSectors);
 
-    // Fire email out of band (don't fail the transaction if email throws).
-    if (opts.sendEmail) {
-      await this.distributeTicketEmails(order, tickets, event, bySectorId);
+    // SSE notify + ticket email/QR do network I/O and must NOT run while the
+    // Sector/Batch locks are held (that serializes every concurrent buyer of
+    // the event behind this I/O). High-concurrency callers pass
+    // `deferSideEffects` and run them after the transaction commits; the
+    // low-concurrency manual paths fall back to running inline.
+    const sideEffects: PaidSideEffects = {
+      orderId: order.id,
+      paidAt: order.paidAt,
+      order,
+      tickets,
+      event,
+      sectorById: bySectorId,
+      sendEmail: opts.sendEmail === true,
+    };
+    if (opts.deferSideEffects) {
+      opts.deferSideEffects.push(sideEffects);
+    } else {
+      await this.runPaidSideEffects(sideEffects);
     }
 
     return { ...base, ticketIds: tickets.map((t) => t.id) };
+  }
+
+  /**
+   * Runs the post-commit side effects of a confirmed order: SSE notification
+   * and the ticket email (with QR rendering). Never throws — a committed sale
+   * must not be undone by a failed notification/email.
+   */
+  private async runPaidSideEffects(fx: PaidSideEffects): Promise<void> {
+    this.stream.notify(fx.orderId, OrderStatus.PAID, fx.paidAt);
+    if (!fx.sendEmail) return;
+    try {
+      await this.distributeTicketEmails(
+        fx.order,
+        fx.tickets,
+        fx.event,
+        fx.sectorById,
+      );
+    } catch (err) {
+      this.logger.error(
+        `post-commit ticket email failed for order ${fx.orderId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 
   async resendTicketsForOrder(orderId: string): Promise<number> {
@@ -904,7 +1008,7 @@ export class OrdersService {
 
     let payment: OrderPaymentInfo | null = null;
     if (order.paymentMethod && order.paymentId) {
-      const cached = paymentCache.get(order.id);
+      const cached = paymentCacheGet(order.id);
       const pixDiscountCents = 0;
       const fallbackProviderName = (() => {
         try {
