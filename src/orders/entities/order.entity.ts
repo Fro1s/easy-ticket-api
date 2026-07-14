@@ -23,6 +23,10 @@ import { OrderItem } from './order-item.entity';
   unique: true,
   where: '"paymentId" IS NOT NULL',
 })
+// Hot-path indexes: buyer's order list / anti-flood dedup, and the
+// per-minute stale-order expiry cron (WHERE status=PENDING AND reservedUntil<now).
+@Index('IDX_orders_user_status_reserved', ['userId', 'status', 'reservedUntil'])
+@Index('IDX_orders_status_reserved', ['status', 'reservedUntil'])
 export class Order {
   @PrimaryColumn('varchar', { length: 32 })
   id: string = createId();

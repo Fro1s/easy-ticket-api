@@ -10,6 +10,17 @@ const baseOptions = {
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',
   ssl,
+  // Explicitly size the pg connection pool. Without this, node-postgres
+  // defaults to max 10, and the purchase path holds a connection for the
+  // whole checkout transaction — under a burst of concurrent buyers the
+  // 11th+ request would queue indefinitely. Fail fast instead.
+  extra: {
+    max: Number(process.env.DATABASE_POOL_MAX ?? 30),
+    connectionTimeoutMillis: Number(
+      process.env.DATABASE_CONN_TIMEOUT_MS ?? 3000,
+    ),
+    idleTimeoutMillis: Number(process.env.DATABASE_IDLE_TIMEOUT_MS ?? 30000),
+  },
 };
 
 export const dataSourceOptions: DataSourceOptions = process.env.DATABASE_URL

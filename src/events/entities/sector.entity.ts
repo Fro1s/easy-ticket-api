@@ -1,6 +1,7 @@
 import {
   Column,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -11,6 +12,8 @@ import { Event } from './event.entity';
 import { Batch } from './batch.entity';
 
 @Entity('sectors')
+// Sectors are always loaded by their event (event page, availability, checkout).
+@Index('IDX_sectors_eventId', ['eventId'])
 export class Sector {
   @PrimaryColumn('varchar', { length: 32 })
   id: string = createId();

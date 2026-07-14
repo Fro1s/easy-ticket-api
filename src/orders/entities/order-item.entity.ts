@@ -1,10 +1,19 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryColumn,
+} from 'typeorm';
 import { createId } from '@paralleldrive/cuid2';
 import { Order } from './order.entity';
 import { Sector } from '../../events/entities/sector.entity';
 import { Batch } from '../../events/entities/batch.entity';
 
 @Entity('order_items')
+// Every order fetch joins its items by orderId; without this it seq-scans.
+@Index('IDX_order_items_orderId', ['orderId'])
 export class OrderItem {
   @PrimaryColumn('varchar', { length: 32 })
   id: string = createId();
