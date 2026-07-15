@@ -15,9 +15,15 @@ const baseOptions = {
   // whole checkout transaction — under a burst of concurrent buyers the
   // 11th+ request would queue indefinitely. Fail fast instead.
   extra: {
-    max: Number(process.env.DATABASE_POOL_MAX ?? 30),
+    // Sized for a burst of concurrent checkouts. Buyers of the same batch
+    // serialize on that row's lock (to prevent oversell), so a request may
+    // hold its connection briefly while queued — the pool must be wide enough
+    // and the acquire timeout patient enough that they QUEUE rather than fail.
+    // Keep `max` under Postgres `max_connections` (default 100), leaving room
+    // for the expiry cron and admin/psql sessions.
+    max: Number(process.env.DATABASE_POOL_MAX ?? 50),
     connectionTimeoutMillis: Number(
-      process.env.DATABASE_CONN_TIMEOUT_MS ?? 3000,
+      process.env.DATABASE_CONN_TIMEOUT_MS ?? 15000,
     ),
     idleTimeoutMillis: Number(process.env.DATABASE_IDLE_TIMEOUT_MS ?? 30000),
   },
