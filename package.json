@@ -28,6 +28,7 @@
     "seed:producers": "ts-node -r tsconfig-paths/register src/seed/create-producers.ts",
     "seed:wipe": "ts-node -r tsconfig-paths/register src/seed/wipe-keep-users.ts",
     "seed:backfill": "ts-node -r tsconfig-paths/register src/seed/backfill-missing-tickets.ts",
+    "seed:transfer-demo": "ts-node -r tsconfig-paths/register src/seed/create-transfer-demo.ts",
     "resend:ticket": "ts-node -r tsconfig-paths/register src/seed/resend-ticket-email.ts"
   },
   "dependencies": {
