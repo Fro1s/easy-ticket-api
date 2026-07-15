@@ -13,6 +13,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TicketsService } from './tickets.service';
@@ -43,6 +44,9 @@ export class TicketsController {
 
   @Post(':id/transfer')
   @UseGuards(JwtAuthGuard)
+  // Tighter bucket than the global default: the recipient lookup by CPF/email
+  // could otherwise be used to probe which CPFs have an account.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiBearerAuth()
   @ApiOperation({
     summary:

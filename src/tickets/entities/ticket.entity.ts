@@ -13,6 +13,8 @@ import { Order } from '../../orders/entities/order.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('tickets')
+// Producer KPI / check-in count queries filter by event and status.
+@Index('IDX_tickets_event_status', ['eventId', 'status'])
 export class Ticket {
   @PrimaryColumn('varchar', { length: 32 })
   id: string = createId();

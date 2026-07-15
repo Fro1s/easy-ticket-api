@@ -153,6 +153,21 @@ export class AuthService {
     return this.buildAuthResponse(user);
   }
 
+  /**
+   * Logout / revoke-all: bumps the user's tokenVersion so every previously
+   * issued refresh token stops validating (see `refresh()`). Access tokens are
+   * short-lived (15m) and expire on their own.
+   */
+  async logout(userId: string): Promise<{ success: true }> {
+    const user = await this.users.findById(userId);
+    if (user) {
+      await this.users.update(userId, {
+        tokenVersion: (user.tokenVersion ?? 0) + 1,
+      });
+    }
+    return { success: true };
+  }
+
   private async buildAuthResponse(user: {
     id: string;
     email: string;

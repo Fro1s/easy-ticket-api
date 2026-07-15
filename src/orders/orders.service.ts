@@ -44,8 +44,51 @@ const RESERVATION_TTL_MS = 10 * 60_000;
 const COMPETITOR_FEE_RATE = 0.2;
 /** Máximo de unidades (soma de qty) por pedido. */
 const MAX_QTY_PER_ORDER = 2;
-// Mocked in-memory cache of payment session data per order (until we move to Redis).
-const paymentCache = new Map<string, PaymentChargeInfo>();
+// In-memory cache of payment session data per order. Entries are stamped with
+// an expiry and swept lazily so the map can't grow unbounded (single-instance
+// only — move to Redis before running >1 machine).
+const PAYMENT_CACHE_TTL_MS = 40 * 60_000;
+interface PaymentCacheEntry {
+  charge: PaymentChargeInfo;
+  expiresAt: number;
+}
+const paymentCache = new Map<string, PaymentCacheEntry>();
+
+function paymentCacheSet(orderId: string, charge: PaymentChargeInfo): void {
+  const now = Date.now();
+  paymentCache.set(orderId, { charge, expiresAt: now + PAYMENT_CACHE_TTL_MS });
+  // Lazy sweep so the map stays bounded even if a cancel path forgets to delete.
+  if (paymentCache.size > 500) {
+    for (const [k, v] of paymentCache) {
+      if (v.expiresAt <= now) paymentCache.delete(k);
+    }
+  }
+}
+
+function paymentCacheGet(orderId: string): PaymentChargeInfo | null {
+  const entry = paymentCache.get(orderId);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    paymentCache.delete(orderId);
+    return null;
+  }
+  return entry.charge;
+}
+
+/**
+ * Side effects that must run AFTER the confirming DB transaction commits and
+ * releases its Sector/Batch row locks — never while holding them, or every
+ * concurrent buyer of the same event serializes behind this network I/O.
+ */
+interface PaidSideEffects {
+  orderId: string;
+  paidAt: Date;
+  order: Order;
+  tickets: Ticket[];
+  event: Event;
+  sectorById: Map<string, Sector>;
+  sendEmail: boolean;
+}
 
 @Injectable()
 export class OrdersService {
@@ -151,7 +194,7 @@ export class OrdersService {
           if (matches) {
             const ev = full.items[0].sector.event;
             const secs = full.items.map((it) => it.sector).filter(Boolean);
-            return this.serialize(full, ev, secs);
+            return this.serialize(full, ev, secs, mgr);
           }
           await this.cancelPendingOrderTx(mgr, full);
         }
@@ -170,9 +213,13 @@ export class OrdersService {
         );
       }
 
+      // Validation/resolution reads WITHOUT locks. Stock contention is confined
+      // to the atomic conditional UPDATEs at the very end of the transaction, so
+      // the hot batch row lock is held for microseconds instead of the whole
+      // request (which otherwise serialized every concurrent buyer and starved
+      // the connection pool under a burst).
       const sectors = await sectorRepo
         .createQueryBuilder('s')
-        .setLock('pessimistic_write')
         .where('s.id IN (:...ids)', { ids: sectorIds })
         .andWhere('s.eventId = :eventId', { eventId: event.id })
         .getMany();
@@ -185,7 +232,6 @@ export class OrdersService {
       const batchRepo = mgr.getRepository(Batch);
       const allBatches = await batchRepo
         .createQueryBuilder('b')
-        .setLock('pessimistic_write')
         .where('b.sectorId IN (:...ids)', { ids: sectorIds })
         .andWhere('b."producerOnly" = false')
         .getMany();
@@ -196,10 +242,15 @@ export class OrdersService {
         batchesBySector.set(b.sectorId, arr);
       }
       const now = new Date();
-      const batchesToSave: Batch[] = [];
 
       let subtotalCents = 0;
       const itemsToInsert: OrderItem[] = [];
+      const reserves: {
+        batchId: string;
+        sectorId: string;
+        qty: number;
+        batchName: string;
+      }[] = [];
 
       for (const item of dto.items) {
         const sector = bySectorId.get(item.sectorId)!;
@@ -247,16 +298,6 @@ export class OrdersService {
           throw new BadRequestException('máximo de 1 combo por pedido');
         }
 
-        const available = batch.capacity - batch.sold - batch.reserved;
-        if (available < item.qty) {
-          throw new ConflictException(
-            `lote ${batch.name} sem estoque (${available} restante)`,
-          );
-        }
-        batch.reserved += item.qty;
-        sector.reserved += item.qty;
-        batchesToSave.push(batch);
-
         subtotalCents += batch.priceCents * item.qty;
 
         const oi = new OrderItem();
@@ -266,10 +307,13 @@ export class OrdersService {
         oi.qty = item.qty;
         oi.priceCents = batch.priceCents;
         itemsToInsert.push(oi);
+        reserves.push({
+          batchId: batch.id,
+          sectorId: sector.id,
+          qty: item.qty,
+          batchName: batch.name,
+        });
       }
-
-      await sectorRepo.save(sectors);
-      await batchRepo.save(batchesToSave);
 
       const feeRate = Number(event.platformFeeRate);
       const feeCents = Math.round(subtotalCents * feeRate);
@@ -288,10 +332,45 @@ export class OrdersService {
       order.reservedUntil = new Date(Date.now() + RESERVATION_TTL_MS);
       order.paidAt = null;
       order.items = itemsToInsert;
-
       await orderRepo.save(order);
 
-      return this.serialize(order, event, sectors);
+      // ---- Contended critical section (kept minimal) ----
+      // Atomic conditional reserve: the WHERE clause is the no-oversell check,
+      // so no row lock is ever held across reads/round-trips. Sorted by id for a
+      // stable lock-acquisition order across concurrent multi-item orders.
+      const sortedReserves = [...reserves].sort((a, b) =>
+        a.batchId < b.batchId ? -1 : a.batchId > b.batchId ? 1 : 0,
+      );
+      for (const r of sortedReserves) {
+        const upd = await batchRepo
+          .createQueryBuilder()
+          .update(Batch)
+          .set({ reserved: () => `reserved + ${r.qty}` })
+          .where('id = :id', { id: r.batchId })
+          .andWhere('capacity - sold - reserved >= :qty', { qty: r.qty })
+          .execute();
+        if (!upd.affected) {
+          throw new ConflictException(`lote ${r.batchName} sem estoque`);
+        }
+      }
+
+      const sectorReserve = new Map<string, number>();
+      for (const r of reserves) {
+        sectorReserve.set(
+          r.sectorId,
+          (sectorReserve.get(r.sectorId) ?? 0) + r.qty,
+        );
+      }
+      for (const sid of Array.from(sectorReserve.keys()).sort()) {
+        await sectorRepo
+          .createQueryBuilder()
+          .update(Sector)
+          .set({ reserved: () => `reserved + ${sectorReserve.get(sid)!}` })
+          .where('id = :id', { id: sid })
+          .execute();
+      }
+
+      return this.serialize(order, event, sectors, mgr);
     });
   }
 
@@ -445,13 +524,14 @@ export class OrdersService {
         venueCity: event.venue?.city ?? null,
       },
     });
-    paymentCache.set(order.id, charge);
+    paymentCacheSet(order.id, charge);
 
     order.paymentMethod = dto.method;
     order.paymentId = charge.paymentId;
     await this.dataSource.getRepository(Order).save(order);
 
     if (charge.status === 'PAID') {
+      const deferred: PaidSideEffects[] = [];
       await this.dataSource.transaction(async (mgr) => {
         const fresh = await mgr.getRepository(Order).findOne({
           where: { id: order.id },
@@ -461,9 +541,11 @@ export class OrdersService {
           await this.markOrderPaid(mgr, fresh, {
             allowMissingPaymentMethod: false,
             sendEmail: true,
+            deferSideEffects: deferred,
           });
         }
       });
+      for (const fx of deferred) await this.runPaidSideEffects(fx);
       // Reload to get updated status for the response.
       const reloaded = await this.dataSource.getRepository(Order).findOne({
         where: { id: order.id },
@@ -496,7 +578,8 @@ export class OrdersService {
     if (this.config.get('NODE_ENV') === 'production') {
       throw new NotFoundException();
     }
-    return this.dataSource.transaction(async (mgr) => {
+    const deferred: PaidSideEffects[] = [];
+    const result = await this.dataSource.transaction(async (mgr) => {
       const order = await mgr.getRepository(Order).findOne({
         where: { id: orderId },
         relations: { items: { sector: { event: { venue: true } } } },
@@ -506,8 +589,11 @@ export class OrdersService {
       return this.markOrderPaid(mgr, order, {
         allowMissingPaymentMethod: false,
         sendEmail: true,
+        deferSideEffects: deferred,
       });
     });
+    for (const fx of deferred) await this.runPaidSideEffects(fx);
+    return result;
   }
 
   /**
@@ -519,31 +605,23 @@ export class OrdersService {
     paymentId: string,
     paidAmountCents?: number,
   ): Promise<void> {
+    const deferred: PaidSideEffects[] = [];
     await this.dataSource.transaction(async (mgr) => {
-      // Trava a linha do pedido antes de checar o status: dois webhooks
-      // concorrentes com o mesmo paymentId serializam aqui, e o segundo lê
-      // status=PAID e sai — evitando emissão dupla de ingressos. O lock é
-      // aplicado sem joins (FOR UPDATE não vale sobre outer joins no Postgres);
-      // as relations são carregadas em seguida.
-      const locked = await mgr
-        .getRepository(Order)
-        .createQueryBuilder('o')
-        .setLock('pessimistic_write')
-        .where('o.paymentId = :paymentId', { paymentId })
-        .getOne();
-      if (!locked) {
-        this.logger.warn(`webhook: no order found for paymentId=${paymentId}`);
-        return;
-      }
+      // Read by paymentId WITHOUT locking the Order row. The Sector/Batch locks
+      // taken inside markOrderPaid are the sole serialization point, which
+      // avoids a lock-order inversion (Order→Sector here vs the expiry cron's
+      // Sector→Order) that could deadlock. Idempotency is re-checked under those
+      // locks, so two concurrent webhooks for the same paymentId can't
+      // double-issue tickets.
       const order = await mgr.getRepository(Order).findOne({
-        where: { id: locked.id },
+        where: { paymentId },
         relations: { items: { sector: { event: { venue: true } } } },
       });
       if (!order) {
         this.logger.warn(`webhook: no order found for paymentId=${paymentId}`);
         return;
       }
-      if (order.status === OrderStatus.PAID) return; // idempotent
+      if (order.status === OrderStatus.PAID) return; // fast idempotent path
       // Confere o valor pago contra o total do pedido quando o gateway o envia:
       // um "completed" com valor divergente (pagamento parcial / replay) não
       // deve confirmar o pedido.
@@ -561,8 +639,10 @@ export class OrdersService {
       await this.markOrderPaid(mgr, order, {
         allowMissingPaymentMethod: true,
         sendEmail: true,
+        deferSideEffects: deferred,
       });
     });
+    for (const fx of deferred) await this.runPaidSideEffects(fx);
   }
 
   /**
@@ -575,19 +655,24 @@ export class OrdersService {
   async markOrderPaid(
     mgr: EntityManager,
     order: Order,
-    opts: { allowMissingPaymentMethod: boolean; sendEmail?: boolean },
+    opts: {
+      allowMissingPaymentMethod: boolean;
+      sendEmail?: boolean;
+      deferSideEffects?: PaidSideEffects[];
+    },
   ): Promise<ConfirmedOrderResponse> {
     const orderRepo = mgr.getRepository(Order);
-    const sectorRepo = mgr.getRepository(Sector);
     const ticketRepo = mgr.getRepository(Ticket);
 
-    if (order.status === OrderStatus.PAID) {
-      const tickets = await ticketRepo.find({ where: { orderId: order.id } });
-      const event = order.items[0].sector.event;
-      const sectors = order.items.map((it) => it.sector).filter(Boolean);
-      const base = await this.serialize(order, event, sectors);
-      return { ...base, ticketIds: tickets.map((t) => t.id) };
-    }
+    const idempotentResponse = async () => {
+      const existing = await ticketRepo.find({ where: { orderId: order.id } });
+      const ev = order.items[0].sector.event;
+      const secs = order.items.map((it) => it.sector).filter(Boolean);
+      const base = await this.serialize(order, ev, secs, mgr);
+      return { ...base, ticketIds: existing.map((t) => t.id) };
+    };
+
+    if (order.status === OrderStatus.PAID) return idempotentResponse();
     if (order.status !== OrderStatus.PENDING) {
       throw new BadRequestException('order is not payable');
     }
@@ -600,34 +685,62 @@ export class OrdersService {
       if (!order.paymentId) order.paymentId = `manual_${order.id}`;
     }
 
-    const sectorIds = order.items.map((it) => it.sectorId);
-    const sectors = await sectorRepo
-      .createQueryBuilder('s')
-      .setLock('pessimistic_write')
-      .where('s.id IN (:...ids)', { ids: sectorIds })
-      .getMany();
-    const bySectorId = new Map(sectors.map((s) => [s.id, s]));
+    const paidAt = new Date();
+    // Atomic claim: exactly one concurrent confirmation flips PENDING -> PAID.
+    // This single row UPDATE is the whole serialization point — no Sector/Batch
+    // FOR UPDATE is held across ticket issuance, so 100 confirmations don't
+    // queue on the event's inventory rows (and can't deadlock with the cron).
+    const claim = await orderRepo
+      .createQueryBuilder()
+      .update(Order)
+      .set({
+        status: OrderStatus.PAID,
+        paidAt,
+        paymentMethod: order.paymentMethod,
+        paymentId: order.paymentId,
+      })
+      .where('id = :id AND status = :pending', {
+        id: order.id,
+        pending: OrderStatus.PENDING,
+      })
+      .execute();
+    if (!claim.affected) {
+      // Lost the race (or no longer payable). Re-read to decide.
+      const current = await orderRepo.findOne({
+        where: { id: order.id },
+        select: { id: true, status: true },
+      });
+      if (current?.status === OrderStatus.PAID) {
+        order.status = OrderStatus.PAID;
+        return idempotentResponse();
+      }
+      throw new BadRequestException('order is not payable');
+    }
+    order.status = OrderStatus.PAID;
+    order.paidAt = paidAt;
 
-    const batchIds = order.items.map((it) => it.batchId);
+    // We exclusively own the transition — safe to issue tickets and move stock.
+    const batchIds = Array.from(new Set(order.items.map((it) => it.batchId)));
     const batches = await mgr
       .getRepository(Batch)
-      .createQueryBuilder('b')
-      .setLock('pessimistic_write')
-      .where('b.id IN (:...ids)', { ids: batchIds })
-      .getMany();
+      .find({ where: { id: In(batchIds) } });
     const byBatchId = new Map(batches.map((b) => [b.id, b]));
+    const sectorById = new Map<string, Sector>();
+    for (const it of order.items) {
+      if (it.sector) sectorById.set(it.sectorId, it.sector);
+    }
 
     const tickets: Ticket[] = [];
+    const batchQty = new Map<string, number>();
+    const sectorQty = new Map<string, number>();
     for (const item of order.items) {
-      const sector = bySectorId.get(item.sectorId)!;
-      sector.reserved = Math.max(0, sector.reserved - item.qty);
-      sector.sold += item.qty;
-
-      const batch = byBatchId.get(item.batchId)!;
-      batch.reserved = Math.max(0, batch.reserved - item.qty);
-      batch.sold += item.qty;
-
-      const ticketsForItem = item.qty * (batch.ticketsPerUnit || 1);
+      batchQty.set(item.batchId, (batchQty.get(item.batchId) ?? 0) + item.qty);
+      sectorQty.set(
+        item.sectorId,
+        (sectorQty.get(item.sectorId) ?? 0) + item.qty,
+      );
+      const tpu = byBatchId.get(item.batchId)?.ticketsPerUnit || 1;
+      const ticketsForItem = item.qty * tpu;
       for (let i = 0; i < ticketsForItem; i++) {
         const t = new Ticket();
         t.id = createId();
@@ -635,9 +748,9 @@ export class OrdersService {
         t.qrToken = `et:${order.id}:${createId()}`;
         t.orderId = order.id;
         t.userId = order.userId;
-        t.eventId = sector.eventId;
-        t.sectorId = sector.id;
-        t.batchId = batch.id;
+        t.eventId = item.sector.eventId;
+        t.sectorId = item.sectorId;
+        t.batchId = item.batchId;
         t.status = TicketStatus.VALID;
         const attendee = item.attendees?.[i];
         t.holderName = attendee?.name ?? null;
@@ -645,29 +758,86 @@ export class OrdersService {
         tickets.push(t);
       }
     }
-
-    await sectorRepo.save(sectors);
-    await mgr.getRepository(Batch).save(batches);
     await ticketRepo.save(tickets);
-
-    order.status = OrderStatus.PAID;
-    order.paidAt = new Date();
     paymentCache.delete(order.id);
-    await orderRepo.save(order);
-    this.stream.notify(order.id, OrderStatus.PAID, order.paidAt);
+
+    // Atomic stock move (reserved -> sold). Sorted ids for stable lock order;
+    // GREATEST guards against any reserved drift going negative.
+    for (const bid of Array.from(batchQty.keys()).sort()) {
+      const qty = batchQty.get(bid)!;
+      await mgr
+        .getRepository(Batch)
+        .createQueryBuilder()
+        .update(Batch)
+        .set({
+          sold: () => `sold + ${qty}`,
+          reserved: () => `GREATEST(0, reserved - ${qty})`,
+        })
+        .where('id = :id', { id: bid })
+        .execute();
+    }
+    for (const sid of Array.from(sectorQty.keys()).sort()) {
+      const qty = sectorQty.get(sid)!;
+      await mgr
+        .getRepository(Sector)
+        .createQueryBuilder()
+        .update(Sector)
+        .set({
+          sold: () => `sold + ${qty}`,
+          reserved: () => `GREATEST(0, reserved - ${qty})`,
+        })
+        .where('id = :id', { id: sid })
+        .execute();
+    }
 
     const event = order.items[0].sector.event;
-    const finalSectors = order.items
-      .map((it) => bySectorId.get(it.sectorId)!)
-      .filter(Boolean);
-    const base = await this.serialize(order, event, finalSectors);
+    const finalSectors = order.items.map((it) => it.sector).filter(Boolean);
+    const base = await this.serialize(order, event, finalSectors, mgr);
 
-    // Fire email out of band (don't fail the transaction if email throws).
-    if (opts.sendEmail) {
-      await this.distributeTicketEmails(order, tickets, event, bySectorId);
+    // SSE notify + ticket email/QR do network I/O and must NOT run while the
+    // Sector/Batch locks are held (that serializes every concurrent buyer of
+    // the event behind this I/O). High-concurrency callers pass
+    // `deferSideEffects` and run them after the transaction commits; the
+    // low-concurrency manual paths fall back to running inline.
+    const sideEffects: PaidSideEffects = {
+      orderId: order.id,
+      paidAt: order.paidAt,
+      order,
+      tickets,
+      event,
+      sectorById,
+      sendEmail: opts.sendEmail === true,
+    };
+    if (opts.deferSideEffects) {
+      opts.deferSideEffects.push(sideEffects);
+    } else {
+      await this.runPaidSideEffects(sideEffects);
     }
 
     return { ...base, ticketIds: tickets.map((t) => t.id) };
+  }
+
+  /**
+   * Runs the post-commit side effects of a confirmed order: SSE notification
+   * and the ticket email (with QR rendering). Never throws — a committed sale
+   * must not be undone by a failed notification/email.
+   */
+  private async runPaidSideEffects(fx: PaidSideEffects): Promise<void> {
+    this.stream.notify(fx.orderId, OrderStatus.PAID, fx.paidAt);
+    if (!fx.sendEmail) return;
+    try {
+      await this.distributeTicketEmails(
+        fx.order,
+        fx.tickets,
+        fx.event,
+        fx.sectorById,
+      );
+    } catch (err) {
+      this.logger.error(
+        `post-commit ticket email failed for order ${fx.orderId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 
   async resendTicketsForOrder(orderId: string): Promise<number> {
@@ -869,14 +1039,17 @@ export class OrdersService {
     order: Order,
     event: Event,
     sectors: Sector[],
+    mgr?: EntityManager,
   ): Promise<OrderResponse> {
     const sectorById = new Map(sectors.map((s) => [s.id, s]));
 
+    // When called inside a transaction, reuse its EntityManager — otherwise this
+    // query grabs a SECOND pool connection while the caller still holds the
+    // transaction's connection, which deadlocks the pool under concurrency.
+    const reader = mgr ?? this.dataSource;
     const batchIds = Array.from(new Set(order.items.map((it) => it.batchId)));
     const batches = batchIds.length
-      ? await this.dataSource
-          .getRepository(Batch)
-          .find({ where: { id: In(batchIds) } })
+      ? await reader.getRepository(Batch).find({ where: { id: In(batchIds) } })
       : [];
     const batchById = new Map(batches.map((b) => [b.id, b]));
 
@@ -904,7 +1077,7 @@ export class OrdersService {
 
     let payment: OrderPaymentInfo | null = null;
     if (order.paymentMethod && order.paymentId) {
-      const cached = paymentCache.get(order.id);
+      const cached = paymentCacheGet(order.id);
       const pixDiscountCents = 0;
       const fallbackProviderName = (() => {
         try {
