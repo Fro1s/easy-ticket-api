@@ -13,6 +13,7 @@ import { OrdersModule } from './orders/orders.module';
 import { ProducerModule } from './producer/producer.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { EmailModule } from './email/email.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { ClaimTokensModule } from './claim-tokens/claim-tokens.module';
 import { AdminModule } from './admin/admin.module';
 
@@ -31,6 +32,7 @@ import { AdminModule } from './admin/admin.module';
     ProducerModule,
     TicketsModule,
     EmailModule,
+    WhatsAppModule,
     ClaimTokensModule,
     AdminModule,
   ],
