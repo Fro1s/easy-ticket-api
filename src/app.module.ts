@@ -16,6 +16,7 @@ import { EmailModule } from './email/email.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { ClaimTokensModule } from './claim-tokens/claim-tokens.module';
 import { AdminModule } from './admin/admin.module';
+import { WalletModule } from './wallet/wallet.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { AdminModule } from './admin/admin.module';
     WhatsAppModule,
     ClaimTokensModule,
     AdminModule,
+    WalletModule,
   ],
 })
 export class AppModule {}
