@@ -1,4 +1,12 @@
-import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Header,
+  Param,
+  Req,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -8,6 +16,7 @@ import {
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GoogleWalletService } from './google-wallet.service';
+import { AppleWalletService } from './apple-wallet.service';
 import { GoogleWalletSaveResponse } from './dto/wallet.response';
 
 interface AuthedRequest extends Request {
@@ -19,7 +28,10 @@ interface AuthedRequest extends Request {
 @UseGuards(JwtAuthGuard)
 @Controller('me/tickets/:id/wallet')
 export class WalletController {
-  constructor(private readonly google: GoogleWalletService) {}
+  constructor(
+    private readonly google: GoogleWalletService,
+    private readonly apple: AppleWalletService,
+  ) {}
 
   @Get('google')
   @ApiOperation({ summary: 'Save-to-Google-Wallet URL for an owned ticket' })
@@ -29,5 +41,21 @@ export class WalletController {
     @Param('id') id: string,
   ): Promise<GoogleWalletSaveResponse> {
     return this.google.saveUrl(req.user.id, id);
+  }
+
+  @Get('apple')
+  @Header('Content-Type', 'application/vnd.apple.pkpass')
+  @ApiOperation({ summary: 'Apple Wallet .pkpass for an owned ticket' })
+  async applePass(
+    @Req() req: AuthedRequest,
+    @Param('id') id: string,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.apple.buildPass(
+      req.user.id,
+      id,
+    );
+    return new StreamableFile(buffer, {
+      disposition: `attachment; filename="${filename}"`,
+    });
   }
 }
