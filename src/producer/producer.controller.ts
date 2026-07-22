@@ -49,6 +49,10 @@ import {
 import { ConfirmedOrderResponse } from '../orders/dto/order.response';
 import { ResendEmailResponse } from './dto/resend-email.response';
 import { PortariaManifestResponse } from './dto/portaria-manifest.response';
+import {
+  ValidateTicketsBatchDto,
+  ValidateTicketsBatchResponse,
+} from './dto/validate-tickets-batch.dto';
 
 @ApiTags('producer')
 @ApiBearerAuth()
@@ -202,6 +206,20 @@ export class ProducerController {
     @Body() dto: ValidateTicketDto,
   ): Promise<ValidateTicketResponse> {
     return this.producer.validateTicket(user, dto);
+  }
+
+  @Post('tickets/validate-batch')
+  @Roles(Role.PRODUCER, Role.ADMIN, Role.STAFF)
+  @ApiOperation({
+    summary:
+      'Sync offline gate validations — marks each VALID ticket as USED, reports conflicts per item',
+  })
+  @ApiResponse({ status: 200, type: ValidateTicketsBatchResponse })
+  validateTicketsBatch(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ValidateTicketsBatchDto,
+  ): Promise<ValidateTicketsBatchResponse> {
+    return this.producer.validateTicketsBatch(user, dto);
   }
 
   @Post('orders/:id/confirm-manual-payment')
