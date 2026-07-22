@@ -38,6 +38,9 @@ import { calculateProcessingFeeCents } from '../payments/lib/calculate-processin
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
 import { OrdersStreamService } from './orders-stream.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { normalizeBrPhone } from '../whatsapp/lib/normalize-phone';
+import { User } from '../users/entities/user.entity';
 import * as QRCode from 'qrcode';
 
 const RESERVATION_TTL_MS = 10 * 60_000;
@@ -58,6 +61,7 @@ export class OrdersService {
     private readonly emails: EmailService,
     private readonly stream: OrdersStreamService,
     private readonly config: ConfigService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE, { name: 'orders:expire-stale' })
@@ -367,6 +371,15 @@ export class OrdersService {
     orderId: string,
     dto: CheckoutOrderDto,
   ): Promise<OrderResponse> {
+    if (dto.phone) {
+      const normalizedPhone = normalizeBrPhone(dto.phone);
+      if (normalizedPhone) {
+        await this.dataSource
+          .getRepository(User)
+          .update({ id: userId }, { phone: normalizedPhone });
+      }
+    }
+
     const order = await this.dataSource.getRepository(Order).findOne({
       where: { id: orderId },
       relations: { items: { sector: { event: { venue: true } } } },
@@ -628,6 +641,7 @@ export class OrdersService {
     // Fire email out of band (don't fail the transaction if email throws).
     if (opts.sendEmail) {
       await this.distributeTicketEmails(order, tickets, event, bySectorId);
+      await this.distributeTicketWhatsApp(order, tickets, event, bySectorId);
     }
 
     return { ...base, ticketIds: tickets.map((t) => t.id) };
@@ -653,7 +667,14 @@ export class OrdersService {
     const sectorById = new Map(
       order.items.map((it) => [it.sectorId, it.sector]),
     );
-    return this.distributeTicketEmails(order, tickets, event, sectorById);
+    const sent = await this.distributeTicketEmails(
+      order,
+      tickets,
+      event,
+      sectorById,
+    );
+    await this.distributeTicketWhatsApp(order, tickets, event, sectorById);
+    return sent;
   }
 
   // ---------- private ----------
@@ -722,6 +743,42 @@ export class OrdersService {
       }
     }
     return sent;
+  }
+
+  /**
+   * Envia os links dos ingressos pro WhatsApp do comprador quando ele tem
+   * telefone cadastrado. Best-effort: nunca falha o fluxo de pagamento —
+   * qualquer erro vira warn no log (mesmo contrato do email).
+   */
+  private async distributeTicketWhatsApp(
+    order: Order,
+    tickets: Ticket[],
+    event: Event,
+    sectorById: Map<string, Sector>,
+  ): Promise<void> {
+    try {
+      const buyer = await this.users.findById(order.userId);
+      const phone = normalizeBrPhone(buyer?.phone ?? null);
+      if (!phone) return;
+      const base = this.emails.baseUrl;
+      await this.whatsapp.sendTickets(phone, {
+        buyerFirstName: buyer?.name ? buyer.name.trim().split(/\s+/)[0] : null,
+        eventArtist: event.artist,
+        eventTitle: event.title,
+        eventStartsAt: event.startsAt,
+        venueName: event.venue?.name ?? '',
+        venueCity: event.venue?.city ?? '',
+        tickets: tickets.map((t) => ({
+          shortCode: t.shortCode,
+          sectorName: sectorById.get(t.sectorId)?.name ?? '',
+          url: `${base}/i/${t.shortCode}`,
+        })),
+      });
+    } catch (err) {
+      this.logger.warn(
+        `distributeTicketWhatsApp failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**
