@@ -48,6 +48,7 @@ import {
 } from './dto/producer-event.response';
 import { ConfirmedOrderResponse } from '../orders/dto/order.response';
 import { ResendEmailResponse } from './dto/resend-email.response';
+import { PortariaManifestResponse } from './dto/portaria-manifest.response';
 
 @ApiTags('producer')
 @ApiBearerAuth()
@@ -158,6 +159,20 @@ export class ProducerController {
     @Query() query: SearchAttendeesQuery,
   ): Promise<AttendeeSearchResponse> {
     return this.events.searchAttendees(user, slug, query);
+  }
+
+  @Get('events/:slug/portaria-manifest')
+  @Roles(Role.PRODUCER, Role.ADMIN, Role.STAFF)
+  @ApiOperation({
+    summary:
+      'Ticket manifest for offline gate validation — sha256 hashes, never raw QR tokens',
+  })
+  @ApiResponse({ status: 200, type: PortariaManifestResponse })
+  portariaManifest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('slug') slug: string,
+  ): Promise<PortariaManifestResponse> {
+    return this.producer.portariaManifest(user, slug);
   }
 
   @Post('events/:id/sell-by-email')
