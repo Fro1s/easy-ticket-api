@@ -14,6 +14,14 @@ export class MeProfile {
   @ApiProperty() createdAt: string;
   @ApiProperty() ticketCount: number;
   @ApiProperty() orderCount: number;
+
+  @ApiProperty({
+    description:
+      'Whether the account has a password set. False for accounts that only ' +
+      'ever used magic links — they may set a first password without ' +
+      'confirming a current one.',
+  })
+  hasPassword: boolean;
 }
 
 export class MyTicketEvent {

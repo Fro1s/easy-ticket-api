@@ -41,17 +41,25 @@ export class ClaimTokensService {
   }
 
   /**
-   * Emite um novo token CLAIM e invalida os anteriores ainda não usados do
-   * mesmo usuário. Antes reaproveitava o token existente, mas como agora só o
-   * hash é persistido o valor cru não é recuperável — então sempre reemitimos
-   * e revogamos os pendentes para não deixar links órfãos válidos.
+   * Emite um novo token e invalida os anteriores ainda não usados do mesmo
+   * usuário e propósito. Antes reaproveitava o token existente, mas como agora
+   * só o hash é persistido o valor cru não é recuperável — então sempre
+   * reemitimos e revogamos os pendentes para não deixar links órfãos válidos.
    */
-  async upsertClaim(userId: string, ttlMs: number): Promise<ClaimToken> {
+  async issueExclusive(
+    userId: string,
+    purpose: ClaimTokenPurpose,
+    ttlMs: number,
+  ): Promise<ClaimToken> {
     await this.repo.update(
-      { userId, purpose: ClaimTokenPurpose.CLAIM, usedAt: IsNull() },
+      { userId, purpose, usedAt: IsNull() },
       { usedAt: new Date() },
     );
-    return this.issue(userId, ClaimTokenPurpose.CLAIM, ttlMs);
+    return this.issue(userId, purpose, ttlMs);
+  }
+
+  async upsertClaim(userId: string, ttlMs: number): Promise<ClaimToken> {
+    return this.issueExclusive(userId, ClaimTokenPurpose.CLAIM, ttlMs);
   }
 
   async consume(

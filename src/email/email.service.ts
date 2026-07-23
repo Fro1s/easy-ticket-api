@@ -98,6 +98,16 @@ export class EmailService {
     });
   }
 
+  async sendPasswordReset(payload: MagicLinkPayload): Promise<void> {
+    const html = renderPasswordReset(payload.url);
+    await this.send({
+      to: payload.to,
+      subject: 'Redefinir sua senha · Easy Ticket',
+      html,
+      text: `Redefina sua senha: ${payload.url}`,
+    });
+  }
+
   async sendTicketByEmail(payload: TicketEmailPayload): Promise<void> {
     const subject = payload.claimUrl
       ? `Você ganhou ingresso pra ${payload.eventArtist}`
@@ -167,6 +177,18 @@ function renderMagicLink(url: string): string {
     <p style="font-size:15px;line-height:1.55;color:#A8A8B3;margin:0 0 24px">Clique no botão abaixo pra entrar. O link expira em 15 minutos.</p>
     <a href="${escape(url)}" style="display:inline-block;background:#D1FF4D;color:#0A0A0F;text-decoration:none;font-weight:600;padding:14px 28px;border-radius:4px">Acessar minha conta →</a>
     <p style="font-size:12px;color:#6B6B78;margin:32px 0 0">Se não foi você, ignore este e-mail.</p>
+  </div>
+</body></html>`;
+}
+
+function renderPasswordReset(url: string): string {
+  return `<!doctype html><html><body style="margin:0;background:#0A0A0F;color:#F7F7F2;font-family:Inter,system-ui,sans-serif;padding:32px">
+  <div style="max-width:480px;margin:0 auto;background:#11111A;border:1px solid #25252F;border-radius:8px;padding:32px">
+    <div style="font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#D1FF4D;margin-bottom:16px">Easy Ticket</div>
+    <h1 style="font-size:24px;font-weight:700;margin:0 0 12px;color:#F7F7F2">Redefinir sua senha</h1>
+    <p style="font-size:15px;line-height:1.55;color:#A8A8B3;margin:0 0 24px">Clique no botão abaixo pra escolher uma nova senha. O link expira em 30 minutos e só pode ser usado uma vez.</p>
+    <a href="${escape(url)}" style="display:inline-block;background:#D1FF4D;color:#0A0A0F;text-decoration:none;font-weight:600;padding:14px 28px;border-radius:4px">Criar nova senha →</a>
+    <p style="font-size:12px;color:#6B6B78;margin:32px 0 0">Se não foi você que pediu, ignore este e-mail — sua senha atual continua valendo.</p>
   </div>
 </body></html>`;
 }

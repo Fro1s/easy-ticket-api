@@ -22,7 +22,13 @@ export class MeService {
   ) {}
 
   async profile(userId: string): Promise<MeProfile> {
-    const user = await this.users.findOne({ where: { id: userId } });
+    // passwordHash é select:false; reselecionamos só para derivar `hasPassword`
+    // — o hash em si nunca sai daqui.
+    const user = await this.users
+      .createQueryBuilder('u')
+      .addSelect('u.passwordHash')
+      .where('u.id = :userId', { userId })
+      .getOne();
     if (!user) throw new NotFoundException('user not found');
 
     const [ticketCount, orderCount] = await Promise.all([
@@ -41,6 +47,7 @@ export class MeService {
       createdAt: user.createdAt.toISOString(),
       ticketCount,
       orderCount,
+      hasPassword: Boolean(user.passwordHash),
     };
   }
 

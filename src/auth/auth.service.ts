@@ -12,6 +12,8 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { MagicLinkDto } from './dto/magic-link.dto';
 import { ClaimDto, ConsumeMagicLinkDto } from './dto/claim.dto';
+import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponse, MagicLinkResponse } from './dto/auth.response';
 import { ClaimTokensService } from '../claim-tokens/claim-tokens.service';
 import { ClaimTokenPurpose } from '../common/enums/claim-token-purpose.enum';
@@ -19,6 +21,8 @@ import { EmailService } from '../email/email.service';
 import { Role } from '../common/enums/role.enum';
 
 const MAGIC_LINK_TTL_MS = 15 * 60_000;
+const PASSWORD_RESET_TTL_MS = 30 * 60_000;
+const GHOST_CLAIM_TTL_MS = 24 * 60 * 60_000;
 
 @Injectable()
 export class AuthService {
@@ -98,6 +102,62 @@ export class AuthService {
     return this.buildAuthResponse(user);
   }
 
+  /**
+   * Sempre responde `sent: true` para não revelar quais e-mails têm conta.
+   * Conta "ghost" (sem senha, criada por venda-por-e-mail) não tem senha a
+   * redefinir: mandamos o link de ativação, que é o caminho real dela — e que
+   * também coleta nome/CPF/telefone.
+   */
+  async requestPasswordReset(
+    dto: ForgotPasswordDto,
+  ): Promise<MagicLinkResponse> {
+    const user = await this.users.findByEmail(dto.email);
+    if (!user) return { sent: true };
+
+    const isGhost = !user.passwordHash;
+    const claim = await this.claimTokens.issueExclusive(
+      user.id,
+      isGhost ? ClaimTokenPurpose.CLAIM : ClaimTokenPurpose.PASSWORD_RESET,
+      isGhost ? GHOST_CLAIM_TTL_MS : PASSWORD_RESET_TTL_MS,
+    );
+    const token = encodeURIComponent(claim.token);
+    const url = isGhost
+      ? `${this.emails.baseUrl}/claim?token=${token}`
+      : `${this.emails.baseUrl}/auth/redefinir-senha?token=${token}`;
+
+    try {
+      if (isGhost) {
+        await this.emails.sendMagicLink({ to: user.email, url });
+      } else {
+        await this.emails.sendPasswordReset({ to: user.email, url });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `password-reset send failed for ${user.email}: ${(err as Error).message}`,
+      );
+    }
+    return { sent: true };
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<AuthResponse> {
+    const claim = await this.claimTokens.consume(
+      dto.token,
+      ClaimTokenPurpose.PASSWORD_RESET,
+    );
+    const user = await this.users.findById(claim.userId);
+    if (!user) throw new BadRequestException('user not found');
+
+    const passwordHash = await argon2.hash(dto.password);
+    const updated = await this.users.update(user.id, {
+      passwordHash,
+      // Trocar a senha derruba as sessões antigas — inclusive a de quem tenha
+      // comprometido a conta. A sessão devolvida abaixo já usa a versão nova.
+      tokenVersion: (user.tokenVersion ?? 0) + 1,
+    });
+
+    return this.buildAuthResponse(updated);
+  }
+
   async claim(dto: ClaimDto): Promise<AuthResponse> {
     const claim = await this.claimTokens.consume(
       dto.token,
@@ -123,6 +183,35 @@ export class AuthService {
       claimedAt: new Date(),
       role: user.role === Role.BUYER ? Role.BUYER : user.role,
       // Ativar a conta invalida qualquer refresh token emitido antes.
+      tokenVersion: (user.tokenVersion ?? 0) + 1,
+    });
+
+    return this.buildAuthResponse(updated);
+  }
+
+  /**
+   * Troca de senha pelo perfil. Quem já tem senha precisa confirmar a atual;
+   * quem nunca definiu uma (entrou só por link mágico) pode definir direto —
+   * caso contrário não teria como criar senha sem passar pelo "esqueci".
+   */
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<AuthResponse> {
+    const user = await this.users.findByIdWithSecrets(userId);
+    if (!user) throw new UnauthorizedException('user not found');
+
+    if (user.passwordHash) {
+      if (!dto.currentPassword) {
+        throw new BadRequestException('currentPassword is required');
+      }
+      const ok = await argon2.verify(user.passwordHash, dto.currentPassword);
+      if (!ok) throw new UnauthorizedException('invalid credentials');
+    }
+
+    const passwordHash = await argon2.hash(dto.newPassword);
+    const updated = await this.users.update(user.id, {
+      passwordHash,
       tokenVersion: (user.tokenVersion ?? 0) + 1,
     });
 

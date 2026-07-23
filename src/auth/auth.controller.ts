@@ -14,6 +14,7 @@ import { LoginDto } from './dto/login.dto';
 import { MagicLinkDto } from './dto/magic-link.dto';
 import { ClaimDto, ConsumeMagicLinkDto } from './dto/claim.dto';
 import { RefreshDto } from './dto/refresh.dto';
+import { ForgotPasswordDto, ResetPasswordDto } from './dto/password-reset.dto';
 import { AuthResponse, MagicLinkResponse } from './dto/auth.response';
 
 interface AuthedRequest extends Request {
@@ -59,6 +60,28 @@ export class AuthController {
   @ApiResponse({ status: 200, type: AuthResponse })
   consumeMagicLink(@Body() dto: ConsumeMagicLinkDto): Promise<AuthResponse> {
     return this.auth.consumeMagicLink(dto);
+  }
+
+  @Post('forgot-password')
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  @ApiOperation({
+    summary:
+      'Request a password-reset email (30 min TTL). Always responds 200. ' +
+      'Ghost accounts receive the account-activation link instead.',
+  })
+  @ApiResponse({ status: 200, type: MagicLinkResponse })
+  forgotPassword(@Body() dto: ForgotPasswordDto): Promise<MagicLinkResponse> {
+    return this.auth.requestPasswordReset(dto);
+  }
+
+  @Post('reset-password')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({
+    summary: 'Set a new password using the emailed token. Returns a session.',
+  })
+  @ApiResponse({ status: 200, type: AuthResponse })
+  resetPassword(@Body() dto: ResetPasswordDto): Promise<AuthResponse> {
+    return this.auth.resetPassword(dto);
   }
 
   @Post('refresh')
