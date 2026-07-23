@@ -30,6 +30,18 @@ import {
   ValidateTicketResponse,
 } from './dto/validate-ticket.dto';
 import { CancelOrderResponse } from './dto/cancel-order.response';
+import {
+  PortariaManifestResponse,
+  PortariaManifestTicket,
+} from './dto/portaria-manifest.response';
+import { hashQrToken, holderFirstName } from './lib/portaria-manifest';
+import {
+  BatchValidationItemDto,
+  BatchValidationResultItem,
+  ValidateTicketsBatchDto,
+  ValidateTicketsBatchResponse,
+} from './dto/validate-tickets-batch.dto';
+import { clampValidatedAt } from './lib/clamp-validated-at';
 
 @Injectable()
 export class ProducerService {
@@ -280,6 +292,147 @@ export class ProducerService {
           holderFirstName,
           validatedAt: ticket.usedAt.toISOString(),
         },
+      };
+    });
+  }
+
+  async portariaManifest(
+    currentUser: AuthenticatedUser,
+    slug: string,
+  ): Promise<PortariaManifestResponse> {
+    const dbUser = await this.users.findById(currentUser.id);
+    if (!dbUser) throw new ForbiddenException();
+
+    const event = await this.dataSource
+      .getRepository(Event)
+      .findOne({ where: { slug } });
+    if (!event) throw new NotFoundException('event not found');
+    if (
+      currentUser.role !== Role.ADMIN &&
+      dbUser.producerId !== event.producerId
+    ) {
+      throw new ForbiddenException(
+        'producer can only load manifests for their own events',
+      );
+    }
+
+    const rows: Array<{
+      t_id: string;
+      t_qr: string;
+      t_short: string;
+      t_status: string;
+      t_used: Date | null;
+      t_holder: string | null;
+      s_name: string | null;
+      s_color: string | null;
+      b_name: string | null;
+      u_name: string | null;
+    }> = await this.dataSource
+      .getRepository(Ticket)
+      .createQueryBuilder('t')
+      .leftJoin('sectors', 's', 's.id = t.sectorId')
+      .leftJoin('batches', 'b', 'b.id = t.batchId')
+      .leftJoin('users', 'u', 'u.id = t.userId')
+      .where('t.eventId = :eventId', { eventId: event.id })
+      .select([
+        't.id AS t_id',
+        't.qrToken AS t_qr',
+        't.shortCode AS t_short',
+        't.status AS t_status',
+        't.usedAt AS t_used',
+        't.holderName AS t_holder',
+        's.name AS s_name',
+        's.colorHex AS s_color',
+        'b.name AS b_name',
+        'u.name AS u_name',
+      ])
+      .getRawMany();
+
+    const tickets: PortariaManifestTicket[] = rows.map((r) => ({
+      ticketId: r.t_id,
+      qrTokenHash: hashQrToken(r.t_qr),
+      shortCode: r.t_short,
+      sectorName: r.s_name ?? '',
+      batchName: r.b_name ?? null,
+      sectorColor: r.s_color ?? '#888888',
+      holderFirstName: holderFirstName(r.t_holder, r.u_name),
+      status: r.t_status,
+      usedAt: r.t_used ? new Date(r.t_used).toISOString() : null,
+    }));
+
+    return {
+      eventId: event.id,
+      generatedAt: new Date().toISOString(),
+      tickets,
+    };
+  }
+
+  async validateTicketsBatch(
+    currentUser: AuthenticatedUser,
+    dto: ValidateTicketsBatchDto,
+  ): Promise<ValidateTicketsBatchResponse> {
+    const dbUser = await this.users.findById(currentUser.id);
+    if (!dbUser) throw new ForbiddenException();
+
+    const event = await this.dataSource
+      .getRepository(Event)
+      .findOne({ where: { id: dto.eventId } });
+    if (!event) throw new NotFoundException('event not found');
+    if (
+      currentUser.role !== Role.ADMIN &&
+      dbUser.producerId !== event.producerId
+    ) {
+      throw new ForbiddenException(
+        'producer can only validate tickets for their own events',
+      );
+    }
+
+    const results: BatchValidationResultItem[] = [];
+    // Uma transação por item: um conflito não pode derrubar o lote inteiro,
+    // e o lock pessimista fica curto (mesma garantia do validateTicket unitário).
+    for (const item of dto.items) {
+      results.push(await this.validateOneForBatch(event.id, item));
+    }
+    return { results };
+  }
+
+  private async validateOneForBatch(
+    eventId: string,
+    item: BatchValidationItemDto,
+  ): Promise<BatchValidationResultItem> {
+    return this.dataSource.transaction(async (mgr) => {
+      const ticket = await mgr
+        .getRepository(Ticket)
+        .createQueryBuilder('t')
+        .setLock('pessimistic_write')
+        .where('t.id = :id', { id: item.ticketId })
+        .getOne();
+
+      if (!ticket) {
+        return { ticketId: item.ticketId, ok: false, reason: 'NOT_FOUND' };
+      }
+      if (ticket.eventId !== eventId) {
+        return { ticketId: item.ticketId, ok: false, reason: 'WRONG_EVENT' };
+      }
+      if (ticket.status === TicketStatus.USED) {
+        return {
+          ticketId: item.ticketId,
+          ok: false,
+          reason: 'ALREADY_USED',
+          usedAt: ticket.usedAt?.toISOString(),
+        };
+      }
+      if (ticket.status !== TicketStatus.VALID) {
+        return { ticketId: item.ticketId, ok: false, reason: ticket.status };
+      }
+
+      ticket.status = TicketStatus.USED;
+      ticket.usedAt = clampValidatedAt(item.validatedAt);
+      await mgr.save(ticket);
+      return {
+        ticketId: item.ticketId,
+        ok: true,
+        usedAt: ticket.usedAt.toISOString(),
       };
     });
   }

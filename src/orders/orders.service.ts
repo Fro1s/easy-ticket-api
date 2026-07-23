@@ -38,6 +38,9 @@ import { calculateProcessingFeeCents } from '../payments/lib/calculate-processin
 import { UsersService } from '../users/users.service';
 import { EmailService } from '../email/email.service';
 import { OrdersStreamService } from './orders-stream.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { normalizeBrPhone } from '../whatsapp/lib/normalize-phone';
+import { User } from '../users/entities/user.entity';
 import * as QRCode from 'qrcode';
 
 const RESERVATION_TTL_MS = 10 * 60_000;
@@ -101,6 +104,7 @@ export class OrdersService {
     private readonly emails: EmailService,
     private readonly stream: OrdersStreamService,
     private readonly config: ConfigService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE, { name: 'orders:expire-stale' })
@@ -446,6 +450,15 @@ export class OrdersService {
     orderId: string,
     dto: CheckoutOrderDto,
   ): Promise<OrderResponse> {
+    if (dto.phone) {
+      const normalizedPhone = normalizeBrPhone(dto.phone);
+      if (normalizedPhone) {
+        await this.dataSource
+          .getRepository(User)
+          .update({ id: userId }, { phone: normalizedPhone });
+      }
+    }
+
     const order = await this.dataSource.getRepository(Order).findOne({
       where: { id: orderId },
       relations: { items: { sector: { event: { venue: true } } } },
@@ -794,9 +807,9 @@ export class OrdersService {
     const finalSectors = order.items.map((it) => it.sector).filter(Boolean);
     const base = await this.serialize(order, event, finalSectors, mgr);
 
-    // SSE notify + ticket email/QR do network I/O and must NOT run while the
-    // Sector/Batch locks are held (that serializes every concurrent buyer of
-    // the event behind this I/O). High-concurrency callers pass
+    // SSE notify + ticket email/QR/WhatsApp do network I/O and must NOT run
+    // while the Sector/Batch locks are held (that serializes every concurrent
+    // buyer of the event behind this I/O). High-concurrency callers pass
     // `deferSideEffects` and run them after the transaction commits; the
     // low-concurrency manual paths fall back to running inline.
     const sideEffects: PaidSideEffects = {
@@ -818,9 +831,11 @@ export class OrdersService {
   }
 
   /**
-   * Runs the post-commit side effects of a confirmed order: SSE notification
-   * and the ticket email (with QR rendering). Never throws — a committed sale
-   * must not be undone by a failed notification/email.
+   * Runs the post-commit side effects of a confirmed order: SSE notification,
+   * the ticket email (with QR rendering) and the WhatsApp delivery. Never
+   * throws — a committed sale must not be undone by a failed
+   * notification/email. E-mail e WhatsApp são independentes: a falha de um
+   * não pode impedir o outro.
    */
   private async runPaidSideEffects(fx: PaidSideEffects): Promise<void> {
     this.stream.notify(fx.orderId, OrderStatus.PAID, fx.paidAt);
@@ -835,6 +850,19 @@ export class OrdersService {
     } catch (err) {
       this.logger.error(
         `post-commit ticket email failed for order ${fx.orderId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+    try {
+      await this.distributeTicketWhatsApp(
+        fx.order,
+        fx.tickets,
+        fx.event,
+        fx.sectorById,
+      );
+    } catch (err) {
+      this.logger.error(
+        `post-commit ticket whatsapp failed for order ${fx.orderId}`,
         err instanceof Error ? err.stack : String(err),
       );
     }
@@ -860,7 +888,14 @@ export class OrdersService {
     const sectorById = new Map(
       order.items.map((it) => [it.sectorId, it.sector]),
     );
-    return this.distributeTicketEmails(order, tickets, event, sectorById);
+    const sent = await this.distributeTicketEmails(
+      order,
+      tickets,
+      event,
+      sectorById,
+    );
+    await this.distributeTicketWhatsApp(order, tickets, event, sectorById);
+    return sent;
   }
 
   // ---------- private ----------
@@ -929,6 +964,42 @@ export class OrdersService {
       }
     }
     return sent;
+  }
+
+  /**
+   * Envia os links dos ingressos pro WhatsApp do comprador quando ele tem
+   * telefone cadastrado. Best-effort: nunca falha o fluxo de pagamento —
+   * qualquer erro vira warn no log (mesmo contrato do email).
+   */
+  private async distributeTicketWhatsApp(
+    order: Order,
+    tickets: Ticket[],
+    event: Event,
+    sectorById: Map<string, Sector>,
+  ): Promise<void> {
+    try {
+      const buyer = await this.users.findById(order.userId);
+      const phone = normalizeBrPhone(buyer?.phone ?? null);
+      if (!phone) return;
+      const base = this.emails.baseUrl;
+      await this.whatsapp.sendTickets(phone, {
+        buyerFirstName: buyer?.name ? buyer.name.trim().split(/\s+/)[0] : null,
+        eventArtist: event.artist,
+        eventTitle: event.title,
+        eventStartsAt: event.startsAt,
+        venueName: event.venue?.name ?? '',
+        venueCity: event.venue?.city ?? '',
+        tickets: tickets.map((t) => ({
+          shortCode: t.shortCode,
+          sectorName: sectorById.get(t.sectorId)?.name ?? '',
+          url: `${base}/i/${t.shortCode}`,
+        })),
+      });
+    } catch (err) {
+      this.logger.warn(
+        `distributeTicketWhatsApp failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**

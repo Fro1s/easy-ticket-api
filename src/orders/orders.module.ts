@@ -13,6 +13,7 @@ import { OrdersStreamController } from './orders-stream.controller';
 import { PaymentsModule } from '../payments/payments.module';
 import { UsersModule } from '../users/users.module';
 import { EmailModule } from '../email/email.module';
+import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { EmailModule } from '../email/email.module';
     forwardRef(() => PaymentsModule),
     UsersModule,
     EmailModule,
+    WhatsAppModule,
   ],
   controllers: [OrdersController, OrdersStreamController],
   providers: [OrdersService, OrdersStreamService],

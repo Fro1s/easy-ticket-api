@@ -15,7 +15,9 @@ ENV PORT=8080
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/assets ./assets
 # Não rodar como root: usa o usuário 'node' já presente na imagem base.
+# Depois dos COPY, para que os arquivos copiados também mudem de dono.
 RUN chown -R node:node /app
 USER node
 EXPOSE 8080

@@ -1,0 +1,10 @@
+import { Module } from '@nestjs/common';
+import { WalletController } from './wallet.controller';
+import { GoogleWalletService } from './google-wallet.service';
+import { AppleWalletService } from './apple-wallet.service';
+
+@Module({
+  controllers: [WalletController],
+  providers: [GoogleWalletService, AppleWalletService],
+})
+export class WalletModule {}
