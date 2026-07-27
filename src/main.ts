@@ -49,7 +49,10 @@ async function bootstrap() {
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
   app.use(helmet());
-  app.setGlobalPrefix('api/v1');
+  // `health` sits outside the version prefix so the Fly http check and any
+  // external uptime monitor point at a stable `/health`, unaffected by a
+  // future `api/v2`.
+  app.setGlobalPrefix('api/v1', { exclude: ['health', 'health/db'] });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

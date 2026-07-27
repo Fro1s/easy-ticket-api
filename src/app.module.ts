@@ -20,6 +20,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { ClaimTokensModule } from './claim-tokens/claim-tokens.module';
 import { AdminModule } from './admin/admin.module';
 import { WalletModule } from './wallet/wallet.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { WalletModule } from './wallet/wallet.module';
     ClaimTokensModule,
     AdminModule,
     WalletModule,
+    HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: UserOrIpThrottlerGuard }],
 })

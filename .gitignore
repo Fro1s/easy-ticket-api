@@ -30,6 +30,10 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# Load test artifacts — tokens.csv holds SIGNED, VALID JWTs. Never commit it.
+scripts/loadtest/tokens.csv
+scripts/loadtest/results/
+
 # Misc
 *.pid
 *.seed

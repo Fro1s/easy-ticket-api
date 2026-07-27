@@ -12,3 +12,8 @@ coverage
 docker-compose.yml
 README.md
 test
+# Load test artifacts. tokens.csv holds valid signed JWTs and must never leave
+# the machine that generated it — `COPY . .` in the builder would ship it to the
+# remote build context otherwise.
+scripts/loadtest/tokens.csv
+scripts/loadtest/results
