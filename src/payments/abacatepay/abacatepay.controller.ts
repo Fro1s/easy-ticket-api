@@ -18,6 +18,7 @@ import { OrdersService } from '../../orders/orders.service';
 import {
   verifyAbacateSignature,
   timingSafeStringEqual,
+  querySecretFromRawUrl,
 } from './abacatepay-signature';
 
 interface AbacateWebhookPayload {
@@ -73,26 +74,46 @@ export class AbacatePayController {
     const secret = this.config.get<string>('ABACATEPAY_WEBHOOK_SECRET')?.trim();
     if (!secret) throw new BadRequestException('webhook secret not configured');
 
-    // The URL query-secret path is dev-only: query strings leak into proxy /
-    // CDN / APM logs, so in production we require the HMAC signature over the
-    // raw body (which a log leak can't reproduce).
-    const allowQuerySecret = process.env.NODE_ENV !== 'production';
-    const querySecretMatches =
-      allowQuerySecret &&
-      typeof querySecret === 'string' &&
-      timingSafeStringEqual(querySecret, secret);
+    // O `webhookSecret` na query string é o ÚNICO segredo compartilhado que a
+    // AbacatePay oferece por integração, então é ele que autoriza — inclusive
+    // em produção. (Já tentamos exigir só a assinatura HMAC em prod: a chave
+    // dessa assinatura é publicada na doc pública da AbacatePay, logo ela não
+    // prova nada sobre quem chamou e todo webhook pago virava 401.)
+    // Comparamos as duas leituras do parâmetro: a decodificada pelo Express
+    // (que troca `+` por espaço) e a extraída da URL crua.
+    const received = [querySecret, querySecretFromRawUrl(req.originalUrl)];
+    const querySecretMatches = received.some(
+      (value) =>
+        typeof value === 'string' &&
+        timingSafeStringEqual(value.trim(), secret),
+    );
 
-    let signatureMatches = false;
-    if (signatureHeader && req.rawBody) {
-      const raw = req.rawBody.toString('utf8');
-      signatureMatches = verifyAbacateSignature(raw, signatureHeader, secret);
-    }
+    // Assinatura: só sinal de integridade/origem (chave pública), nunca auth.
+    const hmacKey = this.config
+      .get<string>('ABACATEPAY_WEBHOOK_HMAC_KEY')
+      ?.trim();
+    const signatureMatches =
+      !!signatureHeader &&
+      !!req.rawBody &&
+      !!hmacKey &&
+      verifyAbacateSignature(
+        req.rawBody.toString('utf8'),
+        signatureHeader,
+        hmacKey,
+      );
 
-    if (!querySecretMatches && !signatureMatches) {
+    if (!querySecretMatches) {
+      // Sem vazar o segredo: só o que permite diagnosticar divergência.
       this.logger.warn(
-        `invalid abacate webhook auth (sigPresent=${!!signatureHeader} querySecretPresent=${!!querySecret})`,
+        `invalid abacate webhook auth (sigPresent=${!!signatureHeader} sigValid=${signatureMatches} querySecretPresent=${!!querySecret} receivedLen=${querySecret?.length ?? 0} expectedLen=${secret.length})`,
       );
       throw new UnauthorizedException('invalid signature');
+    }
+
+    if (signatureHeader && hmacKey && !signatureMatches) {
+      this.logger.warn(
+        'abacate webhook signature did not verify (autorizado pelo webhookSecret)',
+      );
     }
 
     const chargeId =
