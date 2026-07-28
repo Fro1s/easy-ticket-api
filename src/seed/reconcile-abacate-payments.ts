@@ -68,15 +68,18 @@ function startOfToday(): Date {
 }
 
 /**
- * Consulta o status da cobrança. IDs de PIX (`transparent.*`) e de checkout
- * hospedado (`checkout.*`) vivem em endpoints diferentes e o id não diz sempre
- * qual é — tenta os dois e usa o que responder.
+ * Consulta o status da cobrança. PIX transparente (`pix_char_…`) e checkout
+ * hospedado de cartão (`bill_…`) vivem em endpoints diferentes; tenta o
+ * provável pelo prefixo do id e cai no outro se não responder.
  */
 async function fetchChargeStatus(
   apiKey: string,
   chargeId: string,
 ): Promise<ChargeStatus | null> {
-  for (const endpoint of ['/transparents/check', '/checkouts/check']) {
+  const endpoints = chargeId.startsWith('bill_')
+    ? ['/checkouts/one', '/transparents/check']
+    : ['/transparents/check', '/checkouts/one'];
+  for (const endpoint of endpoints) {
     const url = `${BASE_URL}${endpoint}?id=${encodeURIComponent(chargeId)}`;
     let res: Response;
     try {
@@ -161,6 +164,9 @@ async function main() {
 
   const confirmed: string[] = [];
   const reopened: string[] = [];
+  // Contado sempre que o gateway responde PAID — inclusive em dry-run, onde
+  // `confirmed`/`failed` ficam vazios por definição.
+  const paidAtGateway: string[] = [];
   const notPaid: string[] = [];
   const unknown: string[] = [];
   const failed: string[] = [];
@@ -185,6 +191,7 @@ async function main() {
       continue;
     }
 
+    paidAtGateway.push(order.id);
     const amountNote =
       typeof charge.amount === 'number'
         ? ` gateway=${charge.amount} pedido=${order.totalCents}`
@@ -248,9 +255,7 @@ async function main() {
 
   console.log('\n[reconcile] ===== resumo =====');
   console.log(`[reconcile] candidatos:        ${candidates.length}`);
-  console.log(
-    `[reconcile] pagos no gateway:  ${confirmed.length + failed.length}`,
-  );
+  console.log(`[reconcile] pagos no gateway:  ${paidAtGateway.length}`);
   console.log(`[reconcile] confirmados:       ${confirmed.length}`);
   console.log(`[reconcile] reabertos (EXPIRED -> PAID): ${reopened.length}`);
   console.log(`[reconcile] não pagos:         ${notPaid.length}`);
