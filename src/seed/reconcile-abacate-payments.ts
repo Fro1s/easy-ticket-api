@@ -68,52 +68,119 @@ function startOfToday(): Date {
 }
 
 /**
- * Consulta o status da cobrança. PIX transparente (`pix_char_…`) e checkout
- * hospedado de cartão (`bill_…`) vivem em endpoints diferentes; tenta o
- * provável pelo prefixo do id e cai no outro se não responder.
+ * Checkouts de cartão (`bill_…`) só saem pelo `/checkouts/list`: o
+ * `/checkouts/one` responde `400 Not found` tanto com `?id=` quanto com o id no
+ * path (verificado contra a API de produção em 28/07/2026). Carrega a lista uma
+ * única vez e indexa por id.
+ */
+let checkoutIndex: Map<string, ChargeStatus> | null = null;
+
+async function loadCheckoutIndex(
+  apiKey: string,
+): Promise<Map<string, ChargeStatus>> {
+  if (checkoutIndex) return checkoutIndex;
+  const index = new Map<string, ChargeStatus>();
+  let after: string | undefined;
+  for (let page = 0; page < 50; page++) {
+    const url =
+      `${BASE_URL}/checkouts/list?limit=100` +
+      (after ? `&after=${encodeURIComponent(after)}` : '');
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'User-Agent': 'easy-ticket-reconcile/1.0',
+      },
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      console.warn(
+        `[reconcile] /checkouts/list falhou (HTTP ${res.status}): ${text.slice(0, 200)}`,
+      );
+      break;
+    }
+    let env: {
+      data?: { id?: string; status?: string; paidAmount?: number | null }[];
+      pagination?: { hasMore?: boolean; next?: string | null };
+    };
+    try {
+      env = JSON.parse(text) as typeof env;
+    } catch {
+      console.warn('[reconcile] /checkouts/list devolveu resposta não-JSON');
+      break;
+    }
+    for (const c of env.data ?? []) {
+      if (!c.id || !c.status) continue;
+      index.set(c.id, {
+        status: c.status.toUpperCase(),
+        // `paidAmount` só vem preenchido quando o pagamento liquidou — é ele
+        // que alimenta a conferência de valor na confirmação.
+        amount: typeof c.paidAmount === 'number' ? c.paidAmount : undefined,
+        endpoint: '/checkouts/list',
+      });
+    }
+    if (!env.pagination?.hasMore || !env.pagination.next) break;
+    after = env.pagination.next;
+  }
+  console.log(`[reconcile] ${index.size} checkout(s) de cartão indexado(s)`);
+  checkoutIndex = index;
+  return index;
+}
+
+/**
+ * Consulta o status da cobrança. PIX transparente (`pix_char_…`) responde no
+ * `/transparents/check`; cartão (`bill_…`) sai do índice do `/checkouts/list`.
+ * Se o prefixo não for reconhecido, tenta os dois caminhos.
  */
 async function fetchChargeStatus(
   apiKey: string,
   chargeId: string,
 ): Promise<ChargeStatus | null> {
-  const endpoints = chargeId.startsWith('bill_')
-    ? ['/checkouts/one', '/transparents/check']
-    : ['/transparents/check', '/checkouts/one'];
-  for (const endpoint of endpoints) {
-    const url = `${BASE_URL}${endpoint}?id=${encodeURIComponent(chargeId)}`;
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'User-Agent': 'easy-ticket-reconcile/1.0',
-        },
-      });
-    } catch (err) {
-      console.warn(
-        `[reconcile]   ${endpoint} falhou na rede: ${(err as Error).message}`,
-      );
-      continue;
-    }
-    const text = await res.text();
-    if (!res.ok) continue;
-    let env: {
-      data?: { status?: string; amount?: number } | null;
-      error?: string | null;
-    };
-    try {
-      env = JSON.parse(text) as typeof env;
-    } catch {
-      continue;
-    }
-    if (env.error || !env.data?.status) continue;
-    return {
-      status: env.data.status.toUpperCase(),
-      amount: env.data.amount,
-      endpoint,
-    };
+  if (chargeId.startsWith('bill_')) {
+    const index = await loadCheckoutIndex(apiKey);
+    return index.get(chargeId) ?? null;
   }
-  return null;
+  const endpoint = '/transparents/check';
+  const url = `${BASE_URL}${endpoint}?id=${encodeURIComponent(chargeId)}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'User-Agent': 'easy-ticket-reconcile/1.0',
+      },
+    });
+  } catch (err) {
+    console.warn(
+      `[reconcile]   ${endpoint} falhou na rede: ${(err as Error).message}`,
+    );
+    return null;
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    // Loga o corpo: engolir esse erro em silêncio já custou um ciclo de deploy
+    // inteiro para descobrir que o endpoint de cartão era outro.
+    console.warn(
+      `[reconcile]   ${endpoint} HTTP ${res.status}: ${text.slice(0, 200)}`,
+    );
+    // Prefixo desconhecido pode ser checkout — tenta o índice de cartão.
+    return (await loadCheckoutIndex(apiKey)).get(chargeId) ?? null;
+  }
+  let env: {
+    data?: { status?: string; amount?: number } | null;
+    error?: string | null;
+  };
+  try {
+    env = JSON.parse(text) as typeof env;
+  } catch {
+    console.warn(`[reconcile]   ${endpoint} devolveu resposta não-JSON`);
+    return null;
+  }
+  if (env.error || !env.data?.status) return null;
+  return {
+    status: env.data.status.toUpperCase(),
+    amount: env.data.amount,
+    endpoint,
+  };
 }
 
 async function main() {
