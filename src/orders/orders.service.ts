@@ -24,6 +24,12 @@ import { UpdateOrderAttendeesDto } from './dto/attendee.dto';
 import { validateAttendees } from './lib/validate-attendees';
 import { existingOrderMatchesRequest } from './lib/order-reuse';
 import {
+  SweepState,
+  afterSweep,
+  shouldSweep,
+  trackPendingOrder,
+} from './lib/expiry-sweep';
+import {
   ConfirmedOrderResponse,
   OrderResponse,
   OrderPaymentInfo,
@@ -44,6 +50,14 @@ import { User } from '../users/entities/user.entity';
 import * as QRCode from 'qrcode';
 
 const RESERVATION_TTL_MS = 10 * 60_000;
+/**
+ * Intervalo máximo entre duas varreduras que consultam o banco, mesmo com o
+ * estado em memória dizendo que não há nada a expirar. É a rede de segurança
+ * contra divergência do estado em memória — e o teto do custo ocioso: a cada
+ * varredura o compute do Neon acorda e só volta a suspender depois do tempo de
+ * scale-to-zero, então intervalos curtos aqui reaparecem como CU-hrs na fatura.
+ */
+const SWEEP_SAFETY_INTERVAL_MS = 6 * 60 * 60_000;
 const COMPETITOR_FEE_RATE = 0.2;
 /** Máximo de unidades (soma de qty) por pedido. */
 const MAX_QTY_PER_ORDER = 2;
@@ -107,25 +121,43 @@ export class OrdersService {
     private readonly whatsapp: WhatsAppService,
   ) {}
 
+  /**
+   * Quando a próxima reserva vence, mantido em memória para que o cron abaixo
+   * não precise perguntar ao banco de minuto em minuto. `lastSweptAt` na época
+   * zero força uma varredura no primeiro tick após o boot, que é o que semeia o
+   * estado a partir do banco.
+   *
+   * Vale porque a API roda em instância única (ver `min_machines_running` no
+   * fly.toml): todo pedido pendente nasce neste processo. Com mais de uma
+   * máquina, cada uma enxergaria só os próprios pedidos e a expiração dependeria
+   * da rede de segurança de {@link SWEEP_SAFETY_INTERVAL_MS}.
+   */
+  private sweepState: SweepState = {
+    nextExpiryAt: null,
+    lastSweptAt: new Date(0),
+  };
+
   @Cron(CronExpression.EVERY_MINUTE, { name: 'orders:expire-stale' })
   async expireStaleOrdersJob(): Promise<void> {
-    const stale = await this.dataSource.getRepository(Order).find({
+    const now = new Date();
+    // Sem nada a expirar, retorna sem tocar no banco — é isso que deixa o
+    // compute do Neon suspender enquanto não há venda acontecendo.
+    if (!shouldSweep(this.sweepState, now, SWEEP_SAFETY_INTERVAL_MS)) return;
+
+    const orderRepo = this.dataSource.getRepository(Order);
+    const stale = await orderRepo.find({
       where: {
         status: OrderStatus.PENDING,
-        reservedUntil: LessThan(new Date()),
+        reservedUntil: LessThan(now),
       },
       select: { id: true },
       take: 200,
     });
 
-    if (stale.length === 0) return;
-
     let expired = 0;
     for (const { id } of stale) {
       try {
-        const fresh = await this.dataSource.getRepository(Order).findOne({
-          where: { id },
-        });
+        const fresh = await orderRepo.findOne({ where: { id } });
         if (fresh) {
           await this.expireIfStale(fresh);
           if (fresh.status === OrderStatus.EXPIRED) expired += 1;
@@ -139,6 +171,19 @@ export class OrdersService {
     if (expired > 0) {
       this.logger.log(`expired ${expired} stale order(s)`);
     }
+
+    // Reancora o estado no banco. Cobre pedidos criados antes de um restart e
+    // qualquer divergência do que foi registrado em memória.
+    const nextPending = await orderRepo.findOne({
+      where: { status: OrderStatus.PENDING },
+      select: { id: true, reservedUntil: true },
+      order: { reservedUntil: 'ASC' },
+    });
+    this.sweepState = afterSweep(
+      this.sweepState,
+      nextPending?.reservedUntil ?? null,
+      now,
+    );
   }
 
   async create(userId: string, dto: CreateOrderDto): Promise<OrderResponse> {
@@ -337,6 +382,9 @@ export class OrdersService {
       order.paidAt = null;
       order.items = itemsToInsert;
       await orderRepo.save(order);
+      // Avisa o cron de expiração que agora existe algo a vencer, para que ele
+      // volte a consultar o banco só a partir deste horário.
+      this.sweepState = trackPendingOrder(this.sweepState, order.reservedUntil);
 
       // ---- Contended critical section (kept minimal) ----
       // Atomic conditional reserve: the WHERE clause is the no-oversell check,

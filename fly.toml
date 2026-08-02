@@ -16,20 +16,29 @@ primary_region = 'gru'
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
-  # ON-SALE SETTING (2026-07-27): kept warm for the sale on 2026-07-28 so the
-  # first buyers of the drop don't pay a cold start. Costs machine-seconds for
-  # as long as it stays at 1 — revert to 0 after the sale to let it sleep again.
+  # Kept warm permanently (decided 2026-08-02, after the 2026-07-28 sale): a
+  # cold boot here cost ~21s on the first request, which is the worst possible
+  # moment to spend it. Costs Fly machine-seconds, and ONLY those — this does
+  # not keep the Neon compute awake. The two cold starts are independent:
+  # `orders:expire-stale` skips the database entirely while nothing is pending
+  # (see sweepState in orders.service.ts), so Neon still suspends on its own and
+  # a warm machine burns no CU-hrs. Worst case after an idle period is ~1-3s of
+  # Neon resume on one request, versus ~21s of machine boot on every request.
   #
   # Deliberately NOT running `fly scale count 2`: the app assumes a single
-  # instance in two places — the in-process payment cache and the per-minute
-  # `orders:expire-stale` cron (see orders.service.ts). A second machine would
-  # duplicate that cron against inventory rows the checkout path also locks.
+  # instance in three places — the in-process payment cache, the per-minute
+  # `orders:expire-stale` cron, and that cron's in-memory expiry state (all in
+  # orders.service.ts). A second machine would duplicate the cron against
+  # inventory rows the checkout path also locks, and each machine would only
+  # track the pending orders it created.
   min_machines_running = 1
   processes = ['app']
 
   # Liveness only — deliberately not /health/db. A DB-touching check on this
   # interval would keep the Neon compute permanently awake and burn the free
-  # plan's monthly compute-hour quota.
+  # plan's monthly compute-hour quota. This is load-bearing now that the machine
+  # never stops: with min_machines_running = 1 this check runs forever, so it
+  # must never reach the database.
   [[http_service.checks]]
     interval = '30s'
     timeout = '5s'
@@ -37,12 +46,15 @@ primary_region = 'gru'
     method = 'GET'
     path = '/health'
 
-# ON-SALE SETTING (2026-07-27): raised to 1024 for the 2026-07-28 sale.
-# 512MB alongside a 50-connection pool is thin, and an OOM doesn't degrade a
-# single request — it kills the machine mid-sale. The app fixes (pool sizing,
-# email/QR off the request path, indexes) still do the heavy lifting; this is
-# headroom, not a substitute for them. Revert to 512 after the sale.
+# Back to 512 on 2026-08-02, now that the 2026-07-28 sale is over — 1024 was
+# headroom bought for that day only.
+#
+# Watch this one if another sale is scheduled: 512MB alongside a 50-connection
+# pool is thin, and an OOM doesn't degrade a single request, it kills the
+# machine. Raise it back to 1024 BEFORE the next on-sale rather than after the
+# first crash. Unlike min_machines_running, this has nothing to do with Neon
+# CU-hrs — it is purely Fly memory cost.
 [[vm]]
   cpu_kind = 'shared'
   cpus = 2
-  memory_mb = 1024
+  memory_mb = 512
