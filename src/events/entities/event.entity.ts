@@ -100,6 +100,12 @@ export class Event {
   @Column('boolean', { default: true })
   cardEnabled: boolean;
 
+  // Quando true, as respostas públicas do evento não revelam quanto estoque
+  // resta (nem no payload) — só se ainda dá para comprar. O painel do produtor
+  // continua vendo os números reais.
+  @Column('boolean', { default: false })
+  hideRemainingTickets: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

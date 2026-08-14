@@ -15,6 +15,7 @@ import { ListEventsQuery } from './dto/list-events.query';
 import { BatchSnapshot } from './lib/active-batch';
 import { buildSectorView, resolveActiveAvulso } from './lib/sector-view';
 import { resolveListingTimeFilter } from './lib/event-listing';
+import { maskSectorAvailability, maskSectorResponse } from './lib/mask-stock';
 
 // Re-exported so consumers can import buildSectorView from the service surface.
 export { buildSectorView };
@@ -121,6 +122,7 @@ export class EventsService {
     if (!event) throw new NotFoundException(`event ${slug} not found`);
 
     const now = new Date();
+    const hide = event.hideRemainingTickets;
     return {
       eventId: event.id,
       sectors: event.sectors
@@ -133,16 +135,20 @@ export class EventsService {
           const available = active
             ? Math.max(0, active.capacity - active.sold - active.reserved)
             : 0;
-          return {
-            id: s.id,
-            name: s.name,
-            capacity: sumPublicBatches(s, 'capacity'),
-            sold: sumPublicBatches(s, 'sold'),
-            reserved: sumPublicBatches(s, 'reserved'),
-            available,
-          };
+          return maskSectorAvailability(
+            {
+              id: s.id,
+              name: s.name,
+              capacity: sumPublicBatches(s, 'capacity'),
+              sold: sumPublicBatches(s, 'sold'),
+              reserved: sumPublicBatches(s, 'reserved'),
+              available,
+            },
+            hide,
+          );
         }),
       fetchedAt: now.toISOString(),
+      hideRemainingTickets: hide,
     };
   }
 
@@ -182,34 +188,39 @@ export class EventsService {
 
   private toDetail(event: Event): EventDetail {
     const now = new Date();
+    const hide = event.hideRemainingTickets;
     return {
       ...this.toSummary(event),
       description: event.description,
       ageRating: event.ageRating,
       platformFeeRate: Number(event.platformFeeRate),
+      hideRemainingTickets: hide,
       sectors: event.sectors
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((s) => {
           const snapshots = publicBatches(s).map(toBatchSnapshot);
-          return {
-            id: s.id,
-            name: s.name,
-            colorHex: s.colorHex,
-            capacity: sumPublicBatches(s, 'capacity'),
-            sold: sumPublicBatches(s, 'sold'),
-            reserved: sumPublicBatches(s, 'reserved'),
-            sortOrder: s.sortOrder,
-            ...buildSectorView(
-              {
-                id: s.id,
-                name: s.name,
-                colorHex: s.colorHex,
-                sortOrder: s.sortOrder,
-              },
-              snapshots,
-              now,
-            ),
-          };
+          return maskSectorResponse(
+            {
+              id: s.id,
+              name: s.name,
+              colorHex: s.colorHex,
+              capacity: sumPublicBatches(s, 'capacity'),
+              sold: sumPublicBatches(s, 'sold'),
+              reserved: sumPublicBatches(s, 'reserved'),
+              sortOrder: s.sortOrder,
+              ...buildSectorView(
+                {
+                  id: s.id,
+                  name: s.name,
+                  colorHex: s.colorHex,
+                  sortOrder: s.sortOrder,
+                },
+                snapshots,
+                now,
+              ),
+            },
+            hide,
+          );
         }),
     };
   }

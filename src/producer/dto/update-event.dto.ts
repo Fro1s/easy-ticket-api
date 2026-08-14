@@ -100,4 +100,13 @@ export class UpdateEventDto {
   @IsOptional()
   @IsBoolean()
   cardEnabled?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Esconde do público a quantidade de ingressos restantes. O painel do ' +
+      'produtor continua mostrando os números reais.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  hideRemainingTickets?: boolean;
 }

@@ -62,6 +62,12 @@ export class EventDetail extends EventSummary {
     example: 0.025,
   })
   platformFeeRate: number;
+  @ApiProperty({
+    description:
+      'Quando true, as contagens de estoque desta resposta estão mascaradas: ' +
+      'indicam apenas se a oferta está disponível ou esgotada, nunca quanto resta.',
+  })
+  hideRemainingTickets: boolean;
 }
 
 export class EventListResponse {
@@ -84,4 +90,10 @@ export class AvailabilityResponse {
   @ApiProperty() eventId: string;
   @ApiProperty({ type: [SectorAvailability] }) sectors: SectorAvailability[];
   @ApiProperty() fetchedAt: string;
+  @ApiProperty({
+    description:
+      'Quando true, as contagens desta resposta estão mascaradas: indicam ' +
+      'apenas disponível ou esgotado, nunca quanto resta.',
+  })
+  hideRemainingTickets: boolean;
 }

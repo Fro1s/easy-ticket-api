@@ -214,6 +214,7 @@ export class ProducerEventsService {
             })),
         })),
       cardEnabled: event.cardEnabled,
+      hideRemainingTickets: event.hideRemainingTickets,
     });
   }
 
@@ -433,6 +434,10 @@ export class ProducerEventsService {
     if (dto.platformFeeRate !== undefined && currentUser.role === Role.ADMIN)
       patch.platformFeeRate = dto.platformFeeRate;
     if (dto.cardEnabled !== undefined) patch.cardEnabled = dto.cardEnabled;
+    // Ajustável a qualquer momento, inclusive com o evento publicado: é uma
+    // preferência de exibição, não afeta preço, estoque ou recebimento.
+    if (dto.hideRemainingTickets !== undefined)
+      patch.hideRemainingTickets = dto.hideRemainingTickets;
 
     const start = patch.startsAt ?? new Date(detail.startsAt);
     const doors = patch.doorsAt ?? new Date(detail.doorsAt);

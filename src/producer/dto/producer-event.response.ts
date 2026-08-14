@@ -75,6 +75,7 @@ export class ProducerEventDetail extends ProducerEventSummary {
   @ApiProperty({ type: [ProducerEventSectorSummary] })
   sectors: ProducerEventSectorSummary[];
   @ApiProperty() cardEnabled: boolean;
+  @ApiProperty() hideRemainingTickets: boolean;
 }
 
 export class ProducerEventListResponse {
